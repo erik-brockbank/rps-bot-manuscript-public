@@ -1,0 +1,14 @@
+{
+  "name": "rps",
+  "description": "Platform for running two player rock, paper, scissors experiments",
+  "version": "1.0.0",
+  "repository": "https://github.com/erik-brockbank/rps.git",
+  "dependencies": {
+    "express": "^4.17.1",
+    "lodash": "^4.17.21",
+    "lodash.clonedeep": "^4.5.0",
+    "socket.io": "^2.4.1",
+    "uuid": "^3.4.0",
+    "weighted": "^0.3.0"
+  }
+}

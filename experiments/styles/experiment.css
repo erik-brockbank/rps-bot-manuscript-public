@@ -1,0 +1,226 @@
+#experiment-container {
+    font-family: 'Average Sans';
+    width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 50px;
+}
+
+#message-container {
+    font-size: 28px;
+    font-style: italic;
+    text-align: center;
+}
+
+#game-container {
+    text-align: center;
+}
+
+#game-banner {
+    font-size: 20px;
+    padding: 8px;
+}
+
+#round-text, #round-index, #time-text, #countdown {
+    display: inline-flex;
+}
+
+#client-info {
+    width: 400px;
+    float: left;
+}
+
+#client-header {
+    font-size: 28px;
+    text-decoration: underline;
+}
+
+#client-points-update {
+    font-size: 24px;
+    font-weight: bold;
+    padding: 4px;
+}
+
+#client-points-total {
+    font-size: 20px;
+    font-style: italic;
+    padding: 4px;
+}
+
+#client-body {
+    padding: 10px;
+}
+
+#opponent-info {
+    width: 400px;
+    float: right;
+}
+
+#opponent-header {
+    font-size: 28px;
+    text-decoration: underline;
+}
+
+#opponent-points-update {
+    font-size: 24px;
+    font-weight: bold;
+    padding: 4px;
+}
+
+#opponent-points-total {
+    font-size: 20px;
+    font-style: italic;
+    padding: 4px;
+}
+
+#opponent-body {
+    padding: 10px;
+}
+
+.move-button {
+    height: 100px;
+    width: 100px;
+}
+
+.move-button-container{
+    height: 100px;
+    width: 100px;
+    padding: 5px;
+    display: inline-flex;
+    border: 5px solid transparent;
+}
+
+.move-button-container:hover {
+    background:gray;
+}
+
+.opponent-move {
+    height: 100px;
+    width: 100px;
+    padding: 5px;
+    display: inline-flex;
+    border: 5px solid transparent;
+}
+
+.opponent-move-img {
+    height: 100px;
+    width: 100px;
+}
+
+#exp-button-container {
+    padding: 10px;
+}
+
+.next-button {
+    background-color: white;
+    color: black;
+    border: 2px solid #4CAF50;
+    font-size: 20px;
+    padding: 10px 20px;
+    text-align: center;
+    font-size: 16px;
+    margin: 4px 2px;
+}
+
+.next-button:hover {
+    background-color: #4CAF50;
+    color: white;
+    font-size: 16px;
+}
+
+#schematic-img {
+    width: 300px;
+    padding: 20px;
+}
+
+
+
+/* Styling for survey container
+ */
+
+#survey-container {
+    text-align: center;
+}
+
+#survey-banner {
+    font-size: 20px;
+    padding: 20px;
+}
+
+#survey-eval {
+    padding: 10px;
+}
+
+#survey-slider-container {
+    width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 20px;
+}
+
+
+
+/* Slider style below copied from go_fish with minimal modifications
+ */
+.slider {
+    -webkit-appearance: none;  /* Override default CSS styles */
+    appearance: none;
+    width: 100%;
+    height: 15px;
+    border-radius: 5px;
+    background: #d3d3d3;
+    outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none; /* Override default look */
+    appearance: none;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+}
+
+/*
+ * This copied from go_fish with minimal modifications
+ * -> originally taken from top response here:
+ * https://stackoverflow.com/questions/33699852/show-tick-positions-in-custom-range-input
+ */
+ .sliderticks {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 12px; /* customized this to look best */
+  }
+
+.sliderticks p {
+    display: flex;
+    justify-content: center;
+    width: 2px; /* customized this to look best */
+    background: #D3D3D3;
+    height: 10px;
+    line-height: 40px;
+    margin: 0 0 20px 0;
+}
+
+/* This should match sliderticks above */
+.sliderlabels {
+    display: flex;
+    justify-content: space-between;
+}
+
+
+.sliderlabels p {
+    display: flex;
+    text-align: left;
+    margin: 0 0 0 0;
+    width: 50px; /* pushes "Strongly agree/disagree" onto two lines */
+}

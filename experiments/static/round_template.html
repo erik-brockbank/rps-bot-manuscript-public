@@ -1,0 +1,56 @@
+<!-- Basic html skeleton for starting each RPS round -->
+<div id="experiment-container">
+    <div id="message-container"></div>
+    <div id="game-container" style="visibility: hidden;">
+        <div id="game-banner">
+            <div id="round-info">
+                <div id="round-text">Round: </div>
+                <div id="round-index"></div>
+            </div>
+            <div id="time-info">
+                <div id="time-text">Time remaining: </div>
+                <div id="countdown"></div>
+            </div>
+        </div>
+        <div id="client-info">
+            <div id="client-header">You</div>
+            <div id="client-points-update"></div>
+            <div id="client-points-total"></div>
+            <div id="client-body">
+                <div class="move-button-container" id="client-move-rock">
+                    <img class="move-button" id="rock-button" src="img/rock-standard.jpg"/>
+                </div>
+                <div class="move-button-container" id="client-move-paper">
+                    <img class="move-button" id="paper-button" src="img/paper-standard.jpg"/>
+                </div>
+                <div class="move-button-container" id="client-move-scissors">
+                    <img class="move-button" id="scissors-button" src="img/scissors-standard.jpg"/>
+                </div>
+            </div>
+        </div>
+        <div id="opponent-info">
+            <div id="opponent-header">Opponent</div>
+            <div id="opponent-points-update"></div>
+            <div id="opponent-points-total"></div>
+            <div id="opponent-body">
+                <div class="opponent-move" id="opponent-move-rock">
+                        <img class="opponent-move-img" id="opponent-rock" src="img/rock-standard.jpg"/>
+                </div>
+                <div class="opponent-move" id="opponent-move-paper">
+                    <img class="opponent-move-img" id="opponent-paper" src="img/paper-standard.jpg"/>
+                </div>
+                <div class="opponent-move" id="opponent-move-scissors">
+                    <img class="opponent-move-img" id="opponent-scissors" src="img/scissors-standard.jpg"/>
+                </div>
+            </div>
+        </div>
+        <div id="game-info">
+            <div id="schematic-container">
+                <img id="schematic-img" src="img/schematic.jpg"/>
+            </div>
+        </div>
+        <div id="exp-button-container">
+            <button class="next-button" id="next-round">Continue</button>
+        </div>
+    </div>
+</div>

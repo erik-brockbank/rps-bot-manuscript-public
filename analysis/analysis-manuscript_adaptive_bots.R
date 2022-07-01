@@ -233,22 +233,45 @@ data = data %>%
 # ANALYSIS: Win count differentials ====
 
 wcd_all = get_bot_strategy_win_count_differential(data)
-
-# exclude data for participant with 200+ losing choices of paper
-wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
-
-
-wcd_summary = wcd_summary %>%
-  rowwise() %>%
-  mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
-wcd_summary$complexity = factor(wcd_summary$complexity,
-                                levels = c("3 cell memory", "9 cell memory", "27 cell memory"))
-
+# TODO move this into parent function above
 wcd_all = wcd_all %>%
   rowwise() %>%
   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
 wcd_all$complexity = factor(wcd_all$complexity,
                             levels = c("3 cell memory", "9 cell memory", "27 cell memory"))
+
+
+# How did bot WCD values compare to chance?
+for (bot_strat in unique(wcd_all$bot_strategy)) {
+  print(STRATEGY_LOOKUP[bot_strat])
+  print(
+    t.test(x = wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
+  )
+}
+
+# Number of participants with WCD values < 0
+# Binomial tests
+for (bot_strat in unique(wcd_all$bot_strategy)) {
+  print(STRATEGY_LOOKUP[bot_strat])
+  print(
+    binom.test(
+      x = sum(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat] < 0),
+      n = length(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
+    )
+  )
+}
+
+
+
+# FIGURE: Win count differentials ====
+
+wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
+# TODO move this into parent function being called above
+wcd_summary = wcd_summary %>%
+  rowwise() %>%
+  mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
+wcd_summary$complexity = factor(wcd_summary$complexity,
+                                levels = c("3 cell memory", "9 cell memory", "27 cell memory"))
 
 
 wcd_summary %>%
@@ -282,39 +305,6 @@ wcd_summary %>%
 # TODO move to function, save to pdf
 
 
-# Individual performance: not necessary
-
-# wcd_all = wcd_all %>%
-#   rowwise() %>%
-#   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
-# wcd_all$complexity = factor(wcd_all$complexity,
-#                             levels = c("3 cell memory", "9 cell memory", "27 cell memory"))
-# wcd_all %>%
-#   ggplot(aes(x = bot_strategy, y = win_count_diff, color = complexity)) +
-#   geom_jitter(size = 5, alpha = 0.75, width = 0.25, height = 0) +
-#   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-#   labs(x = "", y = "Bot win count differential") +
-#   # ggtitle("Adaptive bot performance against humans") +
-#   scale_x_discrete(
-#     name = element_blank(),
-#     labels = STRATEGY_LABELS) +
-#   scale_color_viridis(discrete = T) +
-#   default_plot_theme +
-#   theme(
-#     plot.title = element_text(size = 32, face = "bold"),
-#     axis.title.y = element_text(size = 24, face = "bold"),
-#     # NB: axis title below is to give cushion for adding complexity labels in PPT
-#     # axis.title.x = element_text(size = 64),
-#     # axis.text.x = element_blank(),
-#     axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-#     axis.text.y = element_text(size = 14, face = "bold"),
-#     legend.position = "bottom",
-#     legend.title = element_text(size = 18, face = "bold"),
-#     legend.text = element_text(size = 16)
-#   )
-
-
-# TODO move stats from cogsci script over as needed
 
 
 # ANALYSIS: Information gain for dependencies against bots ====

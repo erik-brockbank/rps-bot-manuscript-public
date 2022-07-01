@@ -309,6 +309,7 @@ wcd_summary %>%
 
 # ANALYSIS: Information gain for dependencies against bots ====
 
+# TODO move these above
 # Function to get marginal probability of each transition (+/-/0) for each participant
 # NB: this is different from function of same name in original manuscript analysis
 get_player_transition_dist = function(data) {
@@ -356,8 +357,8 @@ get_ig_transition = function(player_summary) {
   player_summary %>%
     group_by(bot_strategy, game_id, player_id) %>%
     summarize(
-      entropy_transition = -sum(p_transition * log2(p_transition)),
-      information_gain = -log2(1/3) - entropy_transition
+      entropy_transition = -sum(p_transition * log(p_transition)),
+      information_gain = -log(1/3) - entropy_transition
     )
 }
 
@@ -367,8 +368,8 @@ get_ig_cournot_transition = function(player_summary) {
   player_summary %>%
     group_by(bot_strategy, game_id, player_id) %>%
     summarize(
-      entropy_cournot_transition = -sum(p_cournot_transition * log2(p_cournot_transition)),
-      information_gain = -log2(1/3) - entropy_cournot_transition
+      entropy_cournot_transition = -sum(p_cournot_transition * log(p_cournot_transition)),
+      information_gain = -log(1/3) - entropy_cournot_transition
     )
 }
 
@@ -415,6 +416,39 @@ data = data %>%
 transition_summary = get_player_transition_dist(data)
 # get information gain for opponent of each player based on each player's transition probabilities
 transition_ig = get_ig_transition(transition_summary)
+
+# get overall probability of each cournot transition (for each player)
+cournot_transition_summary = get_player_cournot_transition_dist(data)
+# get information gain for opponent of each player based on each player's cournot transition probabilities
+cournot_transition_ig = get_ig_cournot_transition(cournot_transition_summary)
+
+
+# t-tests
+t.test(
+  transition_ig$information_gain[transition_ig$bot_strategy == "opponent_transitions"],
+  transition_ig$information_gain[transition_ig$bot_strategy == "opponent_courn_transitions"],
+  var.equal = T
+)
+t.test(
+  transition_ig$information_gain[transition_ig$bot_strategy == "opponent_prev_move"],
+  transition_ig$information_gain[transition_ig$bot_strategy == "bot_prev_move"],
+  var.equal = T
+)
+
+t.test(
+  cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "opponent_transitions"],
+  cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "opponent_courn_transitions"],
+  var.equal = T
+)
+t.test(
+  cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "opponent_prev_move"],
+  cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "bot_prev_move"],
+  var.equal = T
+)
+
+
+# FIGURE: Information gain for dependencies against bots ====
+
 transition_ig_summary = get_ig_summary(transition_ig)
 
 p1 = transition_ig_summary %>%
@@ -426,7 +460,7 @@ p1 = transition_ig_summary %>%
   # geom_jitter(data = transition_ig, aes(x = bot_strategy, y = information_gain),
               # size = 2, alpha = 0.75, width = 0.25, height = 0) +
   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  labs(x = "", y = "Information gain (bits)") +
+  labs(x = "", y = "Information gain") +
   ggtitle("Transition dependency exhibited against each bot") +
   scale_x_discrete(
     name = element_blank(),
@@ -443,13 +477,8 @@ p1 = transition_ig_summary %>%
 # TODO save plot
 
 
-# get overall probability of each cournot transition (for each player)
-cournot_transition_summary = get_player_cournot_transition_dist(data)
-# get information gain for opponent of each player based on each player's cournot transition probabilities
-cournot_transition_ig = get_ig_cournot_transition(cournot_transition_summary)
+
 cournot_transition_ig_summary = get_ig_summary(cournot_transition_ig)
-
-
 
 p2 = cournot_transition_ig_summary %>%
   ggplot(aes(x = bot_strategy, y = mean_ig, color = bot_strategy)) +
@@ -460,7 +489,7 @@ p2 = cournot_transition_ig_summary %>%
   # geom_jitter(data = cournot_transition_ig, aes(x = bot_strategy, y = information_gain),
               # size = 2, alpha = 0.75, width = 0.25, height = 0) +
   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  labs(x = "", y = "Information gain (bits)") +
+  labs(x = "", y = "Information gain") +
   ggtitle(str_wrap("Opponent transition dependency exhibited against each bot", 50)) +
   scale_x_discrete(
     name = element_blank(),
@@ -480,22 +509,10 @@ p2 = cournot_transition_ig_summary %>%
 p1 / p2
 
 
-# t-tests comparing IG to 0? Not helpful...
-for (strat in unique(transition_ig$bot_strategy)) {
-  print(STRATEGY_LOOKUP[strat])
-  print(
-    t.test(x = transition_ig$information_gain[transition_ig$bot_strategy == strat])
-  )
-}
-
-for (strat in unique(cournot_transition_ig$bot_strategy)) {
-  print(STRATEGY_LOOKUP[strat])
-  print(
-    t.test(x = cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == strat])
-  )
-}
 
 
+# APPENDIX ====
+# TODO should be able to get rid of all the below
 
 
 

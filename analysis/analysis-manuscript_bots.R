@@ -32,8 +32,13 @@ STRATEGY_LOOKUP = list("prev_move_positive" = "Previous move (+)",
                        "opponent_prev_move_nil" = "Opponent previous move (0)",
                        "win_nil_lose_positive" = "Win-stay-lose-positive",
                        "win_positive_lose_negative" = "Win-positive-lose-negative",
-                       # "outcome_transition_dual_dependency" = "Outcome-transition dual dependency")
                        "outcome_transition_dual_dependency" = "Previous outcome, previous transition")
+
+TRANSITION_STRATEGIES = c("prev_move_positive", "prev_move_negative",
+                          "opponent_prev_move_positive", "opponent_prev_move_nil")
+OUTCOME_STRATEGIES = c("win_nil_lose_positive", "win_positive_lose_negative")
+DUAL_DEPENDENCY_STRATEGIES = c("outcome_transition_dual_dependency")
+
 
 
 # DATA PROCESSING FUNCTIONS ====
@@ -365,8 +370,7 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, xlabel)
 bot_data = read_bot_data(DATA_FILE, STRATEGY_LEVELS, GAME_ROUNDS)
 
 
-
-# ANALYSIS: Demographics and power ====
+# ANALYSIS: Participants, completion time ====
 
 # How many complete participants do we have for each bot strategy?
 bot_data %>%
@@ -375,7 +379,18 @@ bot_data %>%
   summarize(n = n() / GAME_ROUNDS)
 
 
-# Power analysis
+# How long did participants take to complete the task?
+bot_data %>%
+  filter(is_bot == 0) %>%
+  group_by(player_id) %>%
+  summarize(expt_completion_sec = (round_begin_ts[round_index == GAME_ROUNDS] - round_begin_ts[round_index == 1]) / 1000) %>%
+  summarize(mean_expt_completion_sec = mean(expt_completion_sec),
+            sd_expt_completion_sec = sd(expt_completion_sec))
+
+
+
+# ANALYSIS: Power ====
+
 # With 30 participants in lowest bot condition, what effect size do we have 90% power to detect?
 # and what win percentage does that correspond to?
 # https://cran.r-project.org/web/packages/pwr/vignettes/pwr-vignette.html
@@ -385,97 +400,67 @@ power = pwr.t.test(n = 30, sig.level = 0.05, power = 0.9, type = "one.sample", a
 # this is equivalent to an average win rate of about 51% assuming individual win rates are uniformly distributed (unlikely)
 
 
-# ANALYSIS: Bot win count differentials ====
+# ANALYSIS: Win rates, win count differentials ====
 
 # Calculate WCD across all rounds
 wcd_all = get_bot_strategy_win_count_differential(bot_data)
+
+# Print average and SE of *WCD* for each strategy "group"
+for (strat_class in list(TRANSITION_STRATEGIES, OUTCOME_STRATEGIES, DUAL_DEPENDENCY_STRATEGIES)) {
+  print(strat_class)
+  print(
+    wcd_all %>%
+      filter(bot_strategy %in% strat_class) %>%
+      summarize(
+        players = n(),
+        wcd_mean = mean(win_count_diff),
+        wcd_se = sd(win_count_diff) / sqrt(players)
+      )
+  )
+}
+
+# Print average and SE of *win rates* for each strategy "group"
+for (strat_class in list(TRANSITION_STRATEGIES, OUTCOME_STRATEGIES, DUAL_DEPENDENCY_STRATEGIES)) {
+  print(strat_class)
+  print(
+    bot_data %>%
+      filter(is_bot == 0,
+             bot_strategy %in% strat_class) %>%
+      group_by(player_id) %>%
+      count(win = player_outcome == "win") %>%
+      mutate(total = sum(n),
+             win_pct = n / total) %>%
+      filter(win == TRUE) %>%
+      ungroup() %>%
+      summarize(
+        players = n(),
+        win_pct_mean = mean(win_pct),
+        win_pct_se = sd(win_pct) / sqrt(players)
+      )
+  )
+}
+
+
+# FIGURE: Bot win count differentials ====
+
+# Get average WCD for each strategy
 wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
 # Generate figure
-overall_wcd = plot_bot_strategy_win_count_differential_summary(wcd_summary)
+fig_overall = plot_bot_strategy_win_count_differential_summary(wcd_summary)
 
 # Calculate WCD by blocks
 subject_block_data = get_subject_block_data(bot_data, blocksize = 30)
 block_data_summary = get_block_data_summary(subject_block_data)
 # Generate figure
-rounds = plot_bot_strategy_win_pct_by_block(block_data_summary)
+fig_rounds = plot_bot_strategy_win_pct_by_block(block_data_summary)
 
 # Draw figures
-overall_wcd + rounds +
+fig_overall + fig_rounds +
   plot_layout(widths = c(1, 2))
   # plot_annotation(tag_levels = 'A') &
   # theme(plot.tag = element_text(size = 24))
 
 # TODO save to pdf
-
-# Summary statistics
-TRANSITION_STRATEGIES = c("prev_move_positive", "prev_move_negative",
-                          "opponent_prev_move_positive", "opponent_prev_move_nil")
-OUTCOME_STRATEGIES = c("win_nil_lose_positive", "win_positive_lose_negative")
-
-# Average win count differentials
-wcd_all %>%
-  filter(bot_strategy %in% TRANSITION_STRATEGIES) %>%
-  summarize(
-    players = n(),
-    wcd = mean(win_count_diff),
-    wcd_var = sd(win_count_diff)
-  )
-wcd_all %>%
-  filter(bot_strategy %in% OUTCOME_STRATEGIES) %>%
-  summarize(
-    players = n(),
-    wcd = mean(win_count_diff),
-    wcd_var = sd(win_count_diff)
-  )
-wcd_all %>%
-  filter(bot_strategy == "outcome_transition_dual_dependency") %>%
-  summarize(
-    players = n(),
-    wcd = mean(win_count_diff),
-    wcd_var = sd(win_count_diff)
-  )
-
-# Avg. win rates
-bot_data %>%
-  filter(is_bot == 0) %>%
-  filter(bot_strategy %in% TRANSITION_STRATEGIES) %>%
-  group_by(player_id) %>%
-  count(win = player_outcome == "win") %>%
-  mutate(total = sum(n),
-         win_pct = n / total) %>%
-  filter(win == TRUE) %>%
-  ungroup() %>%
-  summarize(
-    mean_win_pct = mean(win_pct),
-    sd_win_pct = sd(win_pct)
-  )
-bot_data %>%
-  filter(is_bot == 0) %>%
-  filter(bot_strategy %in% OUTCOME_STRATEGIES) %>%
-  group_by(player_id) %>%
-  count(win = player_outcome == "win") %>%
-  mutate(total = sum(n),
-         win_pct = n / total) %>%
-  filter(win == TRUE) %>%
-  ungroup() %>%
-  summarize(
-    mean_win_pct = mean(win_pct),
-    sd_win_pct = sd(win_pct)
-  )
-bot_data %>%
-  filter(is_bot == 0) %>%
-  filter(bot_strategy == "outcome_transition_dual_dependency") %>%
-  group_by(player_id) %>%
-  count(win = player_outcome == "win") %>%
-  mutate(total = sum(n),
-         win_pct = n / total) %>%
-  filter(win == TRUE) %>%
-  ungroup() %>%
-  summarize(
-    mean_win_pct = mean(win_pct),
-    sd_win_pct = sd(win_pct)
-  )
-
 
 
 # ANALYSIS: Conditional win percentages ====
@@ -485,21 +470,139 @@ CUTOFF = 200
 # 1. Bot previous move strategies
 bot_loss_prev_move = get_bot_prev_move_loss_pct(bot_data, CUTOFF)
 bot_loss_summary_prev_move = get_bot_prev_move_win_pct_summary(bot_loss_prev_move)
-# Generate plots
-prev_move_positive_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_positive", "Bot previous move")
-prev_move_negative_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_negative", "Bot previous move")
 
 # 2. Player previous move strategies
 player_win_prev_move = get_player_prev_move_win_pct(bot_data, CUTOFF)
 player_win_summary_prev_move = get_bot_prev_move_win_pct_summary(player_win_prev_move)
-# Generate plots
-opponent_prev_move_positive_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_positive", "Player previous move")
-opponent_prev_move_nil_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_nil", "Player previous move")
 
 # 3. Bot previous outcome
 bot_loss_prev_outcome = get_bot_prev_outcome_loss_pct(bot_data, CUTOFF)
 bot_loss_summary_prev_outcome = get_bot_prev_outcome_win_pct_summary(bot_loss_prev_outcome)
-# Generate plots
+
+
+
+# Transition strategies ANOVA
+# In all but final case below, no difference between prev move win percentages
+summary(
+  aov(data = bot_loss_prev_move %>% filter(bot_strategy == "prev_move_positive"),
+      player_win_pct ~ prev_move + Error(player_id)
+    )
+)
+summary(
+  aov(data = bot_loss_prev_move %>% filter(bot_strategy == "prev_move_negative"),
+      player_win_pct ~ prev_move + Error(player_id)
+  )
+)
+summary(
+  aov(data = player_win_prev_move %>% filter(bot_strategy == "opponent_prev_move_positive"),
+      player_win_pct ~ prev_move + Error(player_id)
+  )
+)
+summary(
+  aov(data = player_win_prev_move %>% filter(bot_strategy == "opponent_prev_move_nil"),
+      player_win_pct ~ prev_move + Error(player_id)
+  )
+)
+
+# Transition strategies t tests
+# TODO there's certainly a more efficient way to do this lol...
+# All win rates significantly greater than chance
+dat = bot_loss_prev_move %>% filter(bot_strategy == "prev_move_positive")
+for (move in c("rock", "paper", "scissors")) {
+  print(move)
+  print(
+    t.test(
+      dat$player_win_pct[dat$prev_move == move],
+      mu = 1/3
+    )
+  )
+}
+dat = bot_loss_prev_move %>% filter(bot_strategy == "prev_move_negative")
+for (move in c("rock", "paper", "scissors")) {
+  print(move)
+  print(
+    t.test(
+      dat$player_win_pct[dat$prev_move == move],
+      mu = 1/3
+    )
+  )
+}
+dat = player_win_prev_move %>% filter(bot_strategy == "opponent_prev_move_positive")
+for (move in c("rock", "paper", "scissors")) {
+  print(move)
+  print(
+    t.test(
+      dat$player_win_pct[dat$prev_move == move],
+      mu = 1/3
+    )
+  )
+}
+dat = player_win_prev_move %>% filter(bot_strategy == "opponent_prev_move_nil")
+for (move in c("rock", "paper", "scissors")) {
+  print(move)
+  print(
+    t.test(
+      dat$player_win_pct[dat$prev_move == move],
+      mu = 1/3
+    )
+  )
+}
+
+
+
+# Outcome-transition strategies ANOVA
+# Significant difference in prev outcome win percentages driven by higher percentage after tie
+summary(
+  aov(data = bot_loss_prev_outcome %>% filter(bot_strategy == "win_nil_lose_positive"),
+      player_win_pct ~ prev_outcome + Error(player_id)
+  )
+)
+summary(
+  aov(data = bot_loss_prev_outcome %>% filter(bot_strategy == "win_positive_lose_negative"),
+      player_win_pct ~ prev_outcome + Error(player_id)
+  )
+)
+
+# Outcome-transition strategies t tests
+# TODO there's certainly a more efficient way to do this lol...
+# All win rates significantly greater than chance after a *tie* only
+dat = bot_loss_prev_outcome %>% filter(bot_strategy == "win_nil_lose_positive")
+for (outcome in c("win", "loss", "tie")) {
+  print(outcome)
+  print(
+    t.test(
+      dat$player_win_pct[dat$prev_outcome == outcome],
+      mu = 1/3
+    )
+  )
+}
+dat = bot_loss_prev_outcome %>% filter(bot_strategy == "win_positive_lose_negative")
+for (outcome in c("win", "loss", "tie")) {
+  print(outcome)
+  print(
+    t.test(
+      dat$player_win_pct[dat$prev_outcome == outcome],
+      mu = 1/3
+    )
+  )
+}
+
+
+
+
+
+
+# FIGURE: Conditional win percentages ====
+
+# 1. Bot previous move strategies
+prev_move_positive_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_positive", "Bot previous move")
+prev_move_negative_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_negative", "Bot previous move")
+
+# 2. Player previous move strategies
+opponent_prev_move_positive_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_positive", "Player previous move")
+opponent_prev_move_nil_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_nil", "Player previous move")
+
+# 3. Bot previous outcome
 win_nil_lose_positive_plot_outcome = plot_outcome_win_pct(bot_loss_summary_prev_outcome, "win_nil_lose_positive", "Bot previous outcome")
 win_positive_lose_negative_plot_outcome = plot_outcome_win_pct(bot_loss_summary_prev_outcome, "win_positive_lose_negative", "Bot previous outcome")
 

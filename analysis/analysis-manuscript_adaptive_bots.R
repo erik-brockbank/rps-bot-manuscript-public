@@ -159,7 +159,7 @@ incomplete_games
 data = data %>%
   filter(!(game_id %in% incomplete_games$game_id))
 
-# TODO players with "NA" moves; look into this
+# Players with "NA" moves
 # (processing python script writes NA for empty move values)
 tmp = data %>% filter(is.na(player_move))
 tmp %>% group_by(sona_survey_code) %>% summarize(n())
@@ -223,7 +223,6 @@ data = data %>%
   filter(!sona_survey_code %in% mem$sona_survey_code)
 
 # this person finished the experiment in 90s, chose paper 275 times, and lost 288 times
-# TODO update manuscript image to exclude this
 data = data %>%
   filter(game_id != "f7290e62-697c-46ec-b42d-51090ce3eed5")
 
@@ -391,12 +390,14 @@ get_ig_summary = function(data) {
 # Processing
 # TODO move this to separate function or place at start
 
+# Add previous move column
 data = data %>%
   group_by(bot_strategy, game_id, player_id) %>%
   mutate(
     prev_move = lag(player_move, 1)) %>%
   ungroup()
 
+# Add opponent move column
 data = data %>%
   group_by(game_id, round_index) %>%
   mutate(
@@ -404,6 +405,7 @@ data = data %>%
   ) %>%
   ungroup()
 
+# Add opponent previous move column
 data = data %>%
   group_by(bot_strategy, game_id, player_id) %>%
   mutate(
@@ -424,22 +426,27 @@ cournot_transition_ig = get_ig_cournot_transition(cournot_transition_summary)
 
 
 # t-tests
+
+# transition information gain for participants in transition and cournot transition bot cond's
 t.test(
   transition_ig$information_gain[transition_ig$bot_strategy == "opponent_transitions"],
   transition_ig$information_gain[transition_ig$bot_strategy == "opponent_courn_transitions"],
   var.equal = T
 )
+# transition information gain for participants in choice|prior choice and choice|opponent choice cond's
 t.test(
   transition_ig$information_gain[transition_ig$bot_strategy == "opponent_prev_move"],
   transition_ig$information_gain[transition_ig$bot_strategy == "bot_prev_move"],
   var.equal = T
 )
 
+# cournot transition information gain for participants in transition and cournot transition cond's
 t.test(
   cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "opponent_transitions"],
   cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "opponent_courn_transitions"],
   var.equal = T
 )
+# cournot transition information gain for participants in choice|prior choice and choice|opponent choice cond's
 t.test(
   cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "opponent_prev_move"],
   cournot_transition_ig$information_gain[cournot_transition_ig$bot_strategy == "bot_prev_move"],
@@ -457,8 +464,6 @@ p1 = transition_ig_summary %>%
   geom_errorbar(
     aes(ymin = ci_lower, ymax = ci_upper),
     width = 0.1, size = 1) +
-  # geom_jitter(data = transition_ig, aes(x = bot_strategy, y = information_gain),
-              # size = 2, alpha = 0.75, width = 0.25, height = 0) +
   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
   labs(x = "", y = "Information gain") +
   ggtitle("Transition dependency exhibited against each bot") +
@@ -486,8 +491,6 @@ p2 = cournot_transition_ig_summary %>%
   geom_errorbar(
     aes(ymin = ci_lower, ymax = ci_upper),
     width = 0.1, size = 1) +
-  # geom_jitter(data = cournot_transition_ig, aes(x = bot_strategy, y = information_gain),
-              # size = 2, alpha = 0.75, width = 0.25, height = 0) +
   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
   labs(x = "", y = "Information gain") +
   ggtitle(str_wrap("Opponent transition dependency exhibited against each bot", 50)) +
@@ -503,7 +506,6 @@ p2 = cournot_transition_ig_summary %>%
     axis.text.y = element_text(size = 14, face = "bold"),
     legend.position = "none"
   )
-
 # TODO save plot
 
 p1 / p2
@@ -512,231 +514,3 @@ p1 / p2
 
 
 # APPENDIX ====
-# TODO should be able to get rid of all the below
-
-
-
-# Plots for each opponent type that we're interested in
-transition_ig_summary = transition_ig_summary %>%
-  mutate(dependency = "Transition")
-cournot_transition_ig_summary = cournot_transition_ig_summary %>%
-  mutate(dependency = "Cournot Transition")
-dependency_agg = bind_rows(
-  transition_ig_summary,
-  cournot_transition_ig_summary
-)
-
-transition_ig = transition_ig %>%
-  mutate(dependency = "Transition")
-cournot_transition_ig = cournot_transition_ig %>%
-  mutate(dependency = "Cournot Transition")
-dependency_agg_individ = bind_rows(
-  transition_ig,
-  cournot_transition_ig
-)
-
-
-
-# use patchwork to facet
-plt_transition = dependency_agg %>%
-  filter(bot_strategy == "opponent_transitions") %>%
-  ggplot(aes(x = dependency, y = mean_ig, color = dependency)) +
-  geom_point(
-    size = 6,
-    position = position_nudge(x = 0.4, y = 0)
-  ) +
-  geom_errorbar(
-    aes(ymin = ci_lower, ymax = ci_upper),
-    width = 0.1, size = 1,
-    position = position_nudge(x = 0.4, y = 0)
-  ) +
-  # TOGGLE
-  geom_jitter(data = dependency_agg_individ %>% filter(bot_strategy == "opponent_transitions"),
-              aes(x = dependency, y = information_gain, color = dependency),
-              size = 2, alpha = 0.5, width = 0.15, height = 0) +
-  geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  # ylim(0, 0.25) +
-  labs(x = "", y = "Information gain (bits)") +
-  ggtitle(str_wrap("Transition baserate (+/-/0)", width = 20)) +
-  scale_color_viridis(discrete = T,
-                      begin = 0.25, end = 0.75) +
-  default_plot_theme +
-  # theme_cowplot() +
-  theme(
-    plot.title = element_text(size = 20, face = "bold"),
-    axis.title.y = element_text(size = 18, face = "bold"),
-    # axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.x = element_blank(),
-    axis.text.y = element_text(size = 14, face = "bold"),
-    legend.position = "none"
-  )
-
-
-plt_cournot = dependency_agg %>%
-  filter(bot_strategy == "opponent_courn_transitions") %>%
-  ggplot(aes(x = dependency, y = mean_ig, color = dependency)) +
-  geom_point(size = 6, position = position_nudge(x = 0.4, y = 0)) +
-  geom_errorbar(
-    aes(ymin = ci_lower, ymax = ci_upper),
-    width = 0.1, size = 1,
-    position = position_nudge(x = 0.4, y = 0)
-  ) +
-  # TOGGLE
-  geom_jitter(data = dependency_agg_individ %>% filter(bot_strategy == "opponent_courn_transitions"),
-              aes(x = dependency, y = information_gain, color = dependency),
-              size = 2, alpha = 0.5, width = 0.15, height = 0) +
-  geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  # ylim(0, 0.25) +
-  labs(x = "", y = "") +
-  ggtitle(str_wrap("Opponent transition baserate (+/-/0)", width = 20)) +
-  scale_color_viridis(discrete = T,
-                      begin = 0.25, end = 0.75,
-                      name = str_wrap("Participant dependency", 15),
-                      labels = c(str_wrap("Cournot transition", 15), "Transition")
-                      ) +
-  default_plot_theme +
-  theme(
-    plot.title = element_text(size = 20, face = "bold"),
-    axis.title.y = element_text(size = 18, face = "bold"),
-    # axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.x = element_blank(),
-    axis.text.y = element_text(size = 14, face = "bold"),
-    legend.position = "right",
-    # legend.title = element_blank(),
-    legend.title = element_text(size = 14, face = "bold"),
-    legend.text = element_text(size = 12)
-  )
-
-
-plt_transition + plt_cournot
-
-
-# What's going on with these insane outliers against cournot transition opponent??
-transition_ig %>% filter(information_gain > 1.0) %>% ungroup() %>% select(player_id)
-
-# This person chose paper 275 times and scissors 25 times
-data %>%
-  filter(player_id == "00815ad0-27d4-4fec-a248-14165296dbbe") %>%
-  count(player_move)
-  # glimpse()
-
-# Specifically, first 25 rows were all scissors, next 275 were all paper...
-moves = data %>%
-  filter(player_id == "00815ad0-27d4-4fec-a248-14165296dbbe") %>%
-  select(player_move)
-as.character(moves)
-
-# How did this go?
-data %>%
-  filter(game_id == "7833ab77-0d2c-4f01-8127-a84ff09daef2",
-    # player_id == "00815ad0-27d4-4fec-a248-14165296dbbe",
-         round_index == 300) %>%
-  glimpse()
-
-data %>%
-  filter(game_id == "7833ab77-0d2c-4f01-8127-a84ff09daef2") %>%
-  glimpse()
-
-
-
-
-# Let's try a raincloud plot and see if that looks better
-if (!require(remotes)) {
-  install.packages("remotes")
-}
-remotes::install_github('jorvlan/raincloudplots')
-library(raincloudplots)
-library(cowplot)
-install.packages('PupillometryR')
-library(PupillometryR)
-
-
-
-p1 = dependency_agg_individ %>%
-  filter(bot_strategy == "opponent_transitions") %>%
-  ggplot(
-    aes(x = dependency, y = information_gain, color = dependency, fill = dependency)
-  ) +
-  geom_flat_violin(
-    position = position_nudge(x = .2, y = 0),
-    # adjust = 1.5,
-    alpha = .5,
-    # trim = FALSE,
-    color = NA # remove outlines around distribution
-  ) +
-  geom_point(
-    position = position_jitter(width = 0.1, height = 0), size = 2, alpha = 0.5) +
-  geom_boxplot(
-    alpha = 0.5,
-    width = 0.1,
-    color = "black",
-    outlier.shape = NA,
-    position = position_nudge(x = -0.25, y = 0)
-  ) +
-  geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  labs(x = "", y = "Information gain (bits)") +
-  ggtitle("Transition opponent") +
-  scale_color_viridis(discrete = T,
-                      begin = 0.25, end = 0.75) +
-  scale_fill_viridis(discrete = T,
-                      begin = 0.25, end = 0.75) +
-  default_plot_theme +
-  theme_cowplot() +
-  theme(
-    plot.title = element_text(size = 20, face = "bold"),
-    axis.title.y = element_text(size = 18, face = "bold"),
-    # axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.x = element_blank(),
-    axis.text.y = element_text(size = 14, face = "bold"),
-    legend.position = "none",
-    legend.title = element_blank(),
-    legend.text = element_text(size = 18, face = "bold")
-  ) +
-  guides(fill = FALSE)
-
-dependency_agg_individ %>%
-  filter(bot_strategy == "opponent_courn_transitions") %>%
-  ggplot(
-    aes(x = dependency, y = information_gain, color = dependency, fill = dependency)
-  ) +
-  geom_flat_violin(
-    position = position_nudge(x = .2, y = 0),
-    adjust = 1.5,
-    alpha = .5,
-    trim = FALSE,
-    color = NA # remove outlines around distribution
-  ) +
-  geom_point(
-    position = position_jitter(width = 0.1, height = 0), size = 2, alpha = 0.5) +
-  geom_boxplot(
-    alpha = 0.5,
-    width = 0.1,
-    color = "black",
-    outlier.shape = NA,
-    position = position_nudge(x = -0.25, y = 0)
-  ) +
-  geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  # ylim(0, 0.5) +
-  labs(x = "", y = "Information gain (bits)") +
-  ggtitle("Cournot transition opponent") +
-  scale_color_viridis(discrete = T,
-                      begin = 0.25, end = 0.75) +
-  scale_fill_viridis(discrete = T,
-                     begin = 0.25, end = 0.75) +
-  default_plot_theme +
-  theme_cowplot() +
-  theme(
-    plot.title = element_text(size = 20, face = "bold"),
-    axis.title.y = element_text(size = 18, face = "bold"),
-    # axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.x = element_blank(),
-    axis.text.y = element_text(size = 14, face = "bold"),
-    legend.position = "none",
-    legend.title = element_blank(),
-    legend.text = element_text(size = 18, face = "bold")
-  ) +
-  guides(fill = FALSE)
-
-
-
-

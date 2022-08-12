@@ -399,6 +399,8 @@ power = pwr.t.test(n = 30, sig.level = 0.05, power = 0.9, type = "one.sample", a
 (1 / 3) + power$d * sqrt(1 / 12)
 # this is equivalent to an average win rate of about 51% assuming individual win rates are uniformly distributed (unlikely)
 
+# TODO add clarification to this: why the sqrt(1/12)?
+
 
 # ANALYSIS: Win rates, win count differentials ====
 
@@ -420,6 +422,7 @@ for (strat_class in list(TRANSITION_STRATEGIES, OUTCOME_STRATEGIES, DUAL_DEPENDE
 }
 
 # Print average and SE of *win rates* for each strategy "group"
+# Note comparison to power analysis above
 for (strat_class in list(TRANSITION_STRATEGIES, OUTCOME_STRATEGIES, DUAL_DEPENDENCY_STRATEGIES)) {
   print(strat_class)
   print(

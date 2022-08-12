@@ -44,8 +44,8 @@ STRATEGY_LOOKUP = list(
   "opponent_bot_prev_move" = "Choice given player's prior choice & opponent's prior choice",
   "opponent_prev_two_moves" = "Choice given player's prior two choices",
   # "bot_prev_two_moves" = "Bot previous two moves",
-  "opponent_transitions" = "Transition baserate (+/-/0)",
-  "opponent_courn_transitions" = "Opponent transition baserate (+/-/0)",
+  "opponent_transitions" = "Self-transition baserate (+/-/0)",
+  "opponent_courn_transitions" = "Opponent-transition baserate (+/-/0)",
   "opponent_outcome_transitions" = "Transition given prior outcome (W/L/T)",
   "opponent_outcome_prev_transition_dual" = "Transition given prior transition & prior outcome"
 )
@@ -228,6 +228,57 @@ data = data %>%
 
 
 
+# ANALYSIS: Power ====
+
+# How many participants in each condition?
+data %>%
+  filter(is_bot == 0) %>%
+  group_by(bot_strategy) %>%
+  summarize(n = n_distinct(player_id))
+
+
+# With 20 participants in lowest bot condition, what effect size do we have 90% power to detect?
+# and what win percentage does that correspond to?
+# https://cran.r-project.org/web/packages/pwr/vignettes/pwr-vignette.html
+power = pwr.t.test(n = 20, sig.level = 0.05, power = 0.8, type = "one.sample", alternative = "two.sided")
+# we have 90% power to detect an effect size of d = 0.77, 80% to detect d = 0.66
+(1 / 3) + power$d * sqrt(1 / 12)
+# d = 0.77 this is equivalent to an average win rate of about 55% assuming individual win rates are uniformly distributed (unlikely)
+
+# TODO add clarification to this: why the sqrt(1/12)?
+
+# Reverse calculation: how many people needed to detect effect size of bots winning 40%?
+d = (.4 - (1/3)) / sqrt(1/12) # d = .23 (small effect)
+pwr.t.test(sig.level = 0.05, power = 0.8, d = d, type = "one.sample", alternative = "two.sided")
+# N = 200 for 90% power, 150 for 80% power...
+
+# How much power did we have?
+pwr.t.test(sig.level = 0.05, d = d, n = 20, type = "one.sample", alternative = "two.sided")
+# Not much...
+
+
+# Print average and SE of *bot* win rates for each strategy condition
+# Note comparison to power analysis above
+for (strat in unique(data$bot_strategy)) {
+  print(STRATEGY_LOOKUP[strat])
+  print(
+    data %>%
+      filter(is_bot == 0, # NOTE is bot here
+             bot_strategy == strat) %>%
+      group_by(player_id) %>%
+      count(win = player_outcome == "win") %>%
+      mutate(total = sum(n),
+             win_pct = n / total) %>%
+      filter(win == TRUE) %>%
+      ungroup() %>%
+      summarize(
+        players = n(),
+        win_pct_mean = mean(win_pct),
+        win_pct_se = sd(win_pct) / sqrt(players)
+      )
+  )
+}
+
 
 # ANALYSIS: Win count differentials ====
 
@@ -301,8 +352,16 @@ wcd_summary %>%
     legend.title = element_text(size = 18, face = "bold"),
     legend.text = element_text(size = 16)
   )
-# TODO move to function, save to pdf
 
+
+ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
+       path = "img", # TODO fix file path
+       device = "png",
+       units = "in",
+       width = 8.5,
+       height = 6.5,
+       dpi = 500, # NB: this requires re-opening in preview to fix dpi
+       )
 
 
 
@@ -466,14 +525,14 @@ p1 = transition_ig_summary %>%
     width = 0.1, size = 1) +
   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
   labs(x = "", y = "Information gain") +
-  ggtitle("Transition dependency exhibited against each bot") +
+  ggtitle("Self-transition dependency exhibited against each bot") +
   scale_x_discrete(
     name = element_blank(),
     labels = STRATEGY_LABELS) +
   scale_color_viridis(discrete = T) +
   default_plot_theme +
   theme(
-    plot.title = element_text(size = 24, face = "bold"),
+    plot.title = element_text(size = 20, face = "bold"),
     axis.title.y = element_text(size = 18, face = "bold"),
     axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
     axis.text.y = element_text(size = 14, face = "bold"),
@@ -493,14 +552,14 @@ p2 = cournot_transition_ig_summary %>%
     width = 0.1, size = 1) +
   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
   labs(x = "", y = "Information gain") +
-  ggtitle(str_wrap("Opponent transition dependency exhibited against each bot", 50)) +
+  ggtitle("Opponent-transition dependency exhibited against each bot") +
   scale_x_discrete(
     name = element_blank(),
     labels = STRATEGY_LABELS) +
   scale_color_viridis(discrete = T) +
   default_plot_theme +
   theme(
-    plot.title = element_text(size = 24, face = "bold"),
+    plot.title = element_text(size = 20, face = "bold"),
     axis.title.y = element_text(size = 18, face = "bold"),
     axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
     axis.text.y = element_text(size = 14, face = "bold"),
@@ -508,9 +567,251 @@ p2 = cournot_transition_ig_summary %>%
   )
 # TODO save plot
 
-p1 / p2
+p3 = p1 / p2
+p3
+
+ggsave(filename = "v3_adaptive_bot_response_summary.png",
+       path = "img", # TODO fix file path
+       device = "png",
+       units = "in",
+       width = 9,
+       height = 12,
+       dpi = 500, # NB: this requires re-opening in preview to fix dpi
+)
 
 
 
 
 # APPENDIX ====
+
+
+
+unique(wcd_all$bot_strategy)
+
+
+
+# Figure 7 TOP
+
+# Check strategies that track people's *cournot* transitions (with respect to the bot)
+strat = "opponent_courn_transitions"
+# strat = "bot_prev_move"
+
+# Order by highest *transition* IG people in these cournot bot conditions
+transition_ig %>%
+  filter(bot_strategy == strat) %>%
+  arrange(desc(information_gain))
+
+# Select games with greater than threshold IG
+games = transition_ig %>%
+  filter(bot_strategy == strat,
+         information_gain > .05) %>%
+  pull(game_id)
+
+
+# Check which of these people *actually* had high WCD against hte bots (ignore pattern for people who did poorly)
+wcd_all %>%
+  filter(game_id %in% games)
+
+# Count transitions by these top people
+data %>%
+  filter(
+    game_id %in% games,
+    is_bot == 0) %>%
+  group_by(bot_strategy, game_id, player_id) %>%
+  filter(!is.na(opponent_prev_move), # lag call above sets NA for lag on first move
+         opponent_prev_move != "none",
+         prev_move != "none",
+         player_move != "none") %>%
+  rowwise() %>%
+  # add transitions
+  mutate(
+    transition = TRANSITION_LOOKUP[player_move, prev_move],
+    cournot_transition = TRANSITION_LOOKUP[player_move, opponent_prev_move]) %>%
+  # count player transitions
+  count(transition) %>%
+  print(n = 100)
+  # OR: print full set of moves with transitions and outcomes (needs to filter a single game above, not a set)
+  # select(round_index, player_move, opponent_move, player_outcome,
+  #        transition,
+  #        # cournot_transition
+  # ) %>%
+  # print(n=300)
+
+
+# opponent_courn_transitions
+# a52: - and +
+# 7e5: +
+# 80d: +
+# ef2: 0
+# dcb: 0
+# a2f: -
+# 02c: -
+# 2a6: 0
+# 3b5: 0
+# 2b9: -
+
+# bot_prev_move
+# a4d: -
+# eca: - (slight)
+# 3a6: -
+# 983: + (slight)
+# 262: - or 0
+# 394: +
+#
+
+
+# Fig 7 BOTTOM
+
+# Check strategies that track people's self-transitions
+strat = "opponent_transitions" # self transition baserate
+strat = "opponent_prev_move" # choice given player's prior choice
+
+# Order by highest *cournot transition* IG people in these transition bot conditions
+cournot_transition_ig %>%
+  filter(bot_strategy == strat) %>%
+  arrange(desc(information_gain))
+
+# Select games with greater than threshold IG
+games = cournot_transition_ig %>%
+  filter(bot_strategy == strat,
+         information_gain > .05) %>%
+  pull(game_id)
+
+
+# Check which of these people *actually* had high WCD against the bots (ignore pattern for people who did poorly)
+wcd_all %>%
+  filter(game_id %in% games)
+
+# Count transitions by these top people
+data %>%
+  filter(
+    game_id %in% games,
+    is_bot == 0) %>%
+  group_by(bot_strategy, game_id, player_id) %>%
+  filter(!is.na(opponent_prev_move), # lag call above sets NA for lag on first move
+         opponent_prev_move != "none",
+         prev_move != "none",
+         player_move != "none") %>%
+  rowwise() %>%
+  # add transitions
+  mutate(
+    transition = TRANSITION_LOOKUP[player_move, prev_move],
+    cournot_transition = TRANSITION_LOOKUP[player_move, opponent_prev_move]) %>%
+  # count player transitions
+  count(cournot_transition) %>%
+  print(n = 100)
+# OR: print full set of moves with transitions and outcomes (needs to filter a single game above, not a set)
+# select(round_index, player_move, opponent_move, player_outcome,
+#        transition,
+#        # cournot_transition
+# ) %>%
+# print(n=300)
+
+
+
+# opponent_transitions
+# Not relevant (though two people with slighly positive WCD are favoring + similar to below)
+
+# opponent_prev_move
+# 138: +
+# 2d7: +
+# 668: + (small)
+# 25a: +
+# d53: +
+# b2a: +
+# 61d: +
+# f9b: +
+# e93: +
+
+
+### What are people actually doing?
+
+# It seems like the people with the *highest* WCD against a given strategy aren't
+# just favoring a single transition or cournot transition (more often two of three)
+
+
+# Check strategies that track people's *cournot* transitions (with respect to the bot)
+strat = "opponent_courn_transitions" # opponent transition baserate
+strat = "bot_prev_move" # choice given opponent's prior choice
+
+# Order by highest WCD
+wcd_all %>%
+  filter(bot_strategy == strat) %>%
+  arrange(win_count_diff)
+
+
+# Look at transition for individuals with highest WCD
+
+data %>%
+  filter(
+    # game_id == "911fe152-431f-4f86-acc7-cfa0776f674b", # -118 -> approx. equal + and 0
+    # game_id == "dcfe36cc-d56f-44b6-9079-477f59de5db3", # -113 -> approx. equal + and -
+    # game_id == "1b97892b-0eb9-40bd-8a8d-45d3d67034d4", # -101 -> slight bias for - (then 0)
+
+    # game_id == "fb439c7c-84a9-4cfa-83ef-f3fb32b034eb", # -111 -> strong bias for +
+    # game_id == "6bdc9905-1871-434a-a95d-b484fe08234e", # -100 -> approx. equal + and -
+    game_id == "e22c447a-aa28-46e7-a954-9d834c98ba59", # -100 -> slight bias for + (then -)
+    is_bot == 0) %>%
+  group_by(bot_strategy, game_id, player_id) %>%
+  filter(!is.na(opponent_prev_move), # lag call above sets NA for lag on first move
+         opponent_prev_move != "none",
+         prev_move != "none",
+         player_move != "none") %>%
+  rowwise() %>%
+  # add transitions
+  mutate(
+    transition = TRANSITION_LOOKUP[player_move, prev_move],
+    cournot_transition = TRANSITION_LOOKUP[player_move, opponent_prev_move]) %>%
+  # count player transitions
+  count(transition)
+  # OR print full set of moves with transitions and outcomes (needs to filter a single game above, not a set)
+  # select(round_index, player_move, opponent_move, player_outcome,
+  #        transition,
+  #        # cournot_transition
+  # ) %>%
+  # print(n=300)
+
+
+
+# Check strategies that track people's *self* transitions
+strat = "opponent_transitions" # self transition baserate
+# strat = "opponent_prev_move" # choice given player's prior choice
+
+# Order by highest WCD
+wcd_all %>%
+  filter(bot_strategy == strat) %>%
+  arrange(win_count_diff)
+
+
+# Look at cournot transition for individuals with highest WCD
+data %>%
+  filter(
+    # game_id == "ecbdc056-66bd-4abd-bfff-6b7a0780813c", # -57 -> approx. equal + and 0
+    # game_id == "abddd5ae-342e-4014-83fc-65d48b90a6f0", # -54 -> strong bias for +
+    # game_id == "37c2e184-0cc9-4404-ba2e-cc9b72d261d1", # -52 -> mild bias for + (then 0)
+
+    # game_id == "8857ca23-a687-4cb7-b0f3-8d4a35a3dd53", # -73 -> strong bias for +
+    # game_id == "87d2ed74-7ca2-495e-a173-1d5a8ce5525a", # -65 -> strong bias for +
+    # game_id == "d17a79e7-61ae-48a1-a859-1199d3ec461d", # -57 -> strong bias for +
+    # game_id == "dc7e1ee1-8b5c-450a-8bc7-992eca12759e", # -53 -> strong bias for +
+    is_bot == 0) %>%
+  group_by(bot_strategy, game_id, player_id) %>%
+  filter(!is.na(opponent_prev_move), # lag call above sets NA for lag on first move
+         opponent_prev_move != "none",
+         prev_move != "none",
+         player_move != "none") %>%
+  rowwise() %>%
+  # add transitions
+  mutate(
+    transition = TRANSITION_LOOKUP[player_move, prev_move],
+    cournot_transition = TRANSITION_LOOKUP[player_move, opponent_prev_move]) %>%
+  # count cournot transitions
+  count(cournot_transition)
+  # OR print full set of moves with transitions and outcomes (needs to filter a single game above, not a set)
+  # select(round_index, player_move, opponent_move, player_outcome,
+  #        transition,
+  #        # cournot_transition
+  # ) %>%
+  # print(n=300)
+
+

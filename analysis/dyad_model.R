@@ -1,0 +1,347 @@
+#'
+#' Modeling RPS dyad responses
+#'
+
+
+
+# SETUP ====
+
+rm(list = ls())
+setwd("/Users/erikbrockbank/web/vullab/rps/analysis")
+
+
+library(patchwork)
+library(stats4)
+library(tidyverse)
+library(viridis)
+
+
+# GLOBALS ====
+
+DYAD_DATA_FILE = "rps_v1_data.csv" # name of file containing full dyad dataset
+GAME_ROUNDS = 300 # number of rounds per game
+EVENT_COUNT_PRIOR = 1 # baseline count of each move for model fitting
+MOVE_PROBABILITY_PRIOR = 1/3 # baseline probability of each move for model fitting
+
+# Matrix of values for each outcome:
+# row: player's move choice (R, P, S); col: opponent move choice (R, P, S)
+# vals: points for player given row, col move choices
+OUTCOME_VALS = matrix(c(c(0, -1, 3), c(3, 0, -1), c(-1, 3, 0)),
+                      nrow = 3, ncol = 3, byrow = T,
+                      dimnames = list(c("p1_rock", "p1_paper", "p1_scissors"),
+                                      c("opp_rock", "opp_paper", "opp_scissors")))
+# Matrix of transitions for each pair of moves:
+# row: previous move choice (R, P, S); col: player's move choice (R, P, S)
+# vals: transition string ("up", "down", "stay")
+TRANSITION_VALS = matrix(c(c("stay", "up", "down"),
+                           c("down", "stay", "up"),
+                           c("up", "down", "stay")),
+                         nrow = 3, ncol = 3, byrow = T,
+                         dimnames = list(c("rock", "paper", "scissors"),
+                                         c("rock", "paper", "scissors")))
+
+
+# FUNCTIONS ====
+
+# Function to read in and structure data appropriately
+read_dyad_data = function(filename, game_rounds) {
+  data = read_csv(filename)
+
+  # Remove incomplete games
+  incomplete_data = data %>%
+    group_by(game_id, player_id) %>%
+    summarize(rounds = max(round_index)) %>%
+    filter(rounds < game_rounds) %>%
+    select(player_id, game_id)
+  data = data %>%
+    filter(!(player_id %in% incomplete_data$player_id))
+  # Remove NA rows
+  data = data %>% filter(!is.na(player_move))
+
+  return(data)
+}
+
+
+# INITIALIZATION FUNCTIONS
+
+# Add column for player's previous move (note this will be NA in round 1)
+add_player_prev_move = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(player_prev_move = lag(player_move, 1))
+}
+
+# Add column for player's transition
+# NB: in rows where move or previous move are "none" or NA, transition is "none"
+add_transition = function(data, transition_matrix) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(transition = ifelse(
+      is.na(player_move) || is.na(player_prev_move) || player_move == "none" || player_prev_move == "none",
+      "none",
+      transition_matrix[player_prev_move, player_move]))
+}
+
+
+# MOVE COUNT FUNCTIONS
+
+# Count cumulative number of rock, paper, and scissors moves by each player
+count_moves = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(count_rock = cumsum(player_move == "rock"),
+           count_paper = cumsum(player_move == "paper"),
+           count_scissors = cumsum(player_move == "scissors"))
+}
+
+# Apply "prior" to move rates by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+apply_move_count_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(count_rock = count_rock + count_prior,
+           count_paper = count_paper + count_prior,
+           count_scissors = count_scissors + count_prior)
+}
+
+
+# Calculate move probability on a given round (based on counts from previous round)
+# NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
+calculate_move_probs = function(data, probability_prior) {
+  # Calculate totals for probability conversion
+  data = data %>%
+    rowwise() %>%
+    mutate(count_total = sum(count_rock, count_paper, count_scissors))
+  # Calculate move probability
+  data = data %>%
+    group_by(game_id, player_id) %>%
+    mutate(
+      prob_rock = ifelse(is.na(lag(count_rock, 1)),
+                         probability_prior,
+                         (lag(count_rock, 1) / lag(count_total, 1))),
+      prob_paper = ifelse(is.na(lag(count_paper, 1)),
+                          probability_prior,
+                          (lag(count_paper, 1) / lag(count_total, 1))),
+      prob_scissors = ifelse(is.na(lag(count_scissors, 1)),
+                             probability_prior,
+                             (lag(count_scissors, 1) / lag(count_total, 1)))
+    )
+  return(data)
+}
+
+# Calculate opponent's probability of rock, paper, scissors on a given round
+# Transfers move probability from opponent's rows
+# NB: takes 5-10s
+calculate_opponent_move_probs = function(data) {
+  data %>%
+    group_by(game_id, round_index) %>%
+    mutate(opp_prob_rock = ifelse(is.na(lag(prob_rock, 1)),
+                                  lead(prob_rock, 1),
+                                  lag(prob_rock, 1)),
+           opp_prob_paper = ifelse(is.na(lag(prob_paper, 1)),
+                                   lead(prob_paper, 1),
+                                   lag(prob_paper, 1)),
+           opp_prob_scissors = ifelse(is.na(lag(prob_scissors, 1)),
+                                      lead(prob_scissors, 1),
+                                      lag(prob_scissors, 1))
+    )
+}
+
+# Calculate EV of each move based on opponent move probabilities
+# `outcome_matrix` is globals with player moves in rows, opponent moves in cols, points for player in cells
+# NB: this also adds column with EV value for chosen move based on the calculated EVs
+calculate_move_ev = function(data, outcome_matrix) {
+  # Calculate EV for each possible move
+  data = data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(ev_rock = as.numeric(outcome_matrix["p1_rock",] %*% c(opp_prob_rock, opp_prob_paper, opp_prob_scissors)),
+           ev_paper = as.numeric(outcome_matrix["p1_paper",] %*% c(opp_prob_rock, opp_prob_paper, opp_prob_scissors)),
+           ev_scissors = as.numeric(outcome_matrix["p1_scissors",] %*% c(opp_prob_rock, opp_prob_paper, opp_prob_scissors))
+    )
+
+  # Add column with EV for move that was actually chosen each round (used for softmax fitting)
+  # NB: takes 5-10s to run
+  # TODO is there a more efficient way to do this?
+  data = data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      ev_move_choice = case_when(
+        player_move == "rock" ~ ev_rock,
+        player_move == "paper" ~ ev_paper,
+        player_move == "scissors" ~ ev_scissors,
+        TRUE ~ (2/3) # For moves of "none", NA, etc. assigns EV for uniform opponent
+      )
+    )
+  return(data)
+}
+
+fit_model_to_subjects = function(data) {
+  # Dataframe for storing model fits
+  fit_summary = data.frame(
+    "subject" = character(),
+    "model" = character(),
+    "logL" = numeric(),
+    "n" = numeric(),
+    "softmax" = numeric()
+  )
+
+  # Estimate softmax param for each individual participant
+  # NB: takes ~10s to run
+  for (id in unique(data$player_id)) {
+    subj_data = data %>%
+      filter(player_id == id)
+    fit = brutefit(subj_data)
+    fit_summary = rbind(fit_summary,
+                        data.frame(
+                          "subject" = fit["subject"],
+                          model = "move_baserates",
+                          "logL" = fit["logL"],
+                          "n" = fit["n"],
+                          "softmax" = fit["softmax"]))
+  }
+
+  # Clean up return dataframe
+  fit_summary$logL = as.numeric(fit_summary$logL)
+  fit_summary$n = as.numeric(fit_summary$n)
+  fit_summary$softmax = as.numeric(fit_summary$softmax)
+  fit_summary = fit_summary %>%
+    mutate(ll_per_round = logL / n)
+  return(fit_summary)
+}
+
+
+# TRANSITION FUNCTIONS
+
+# Count cumulative number of transitions by each player
+count_transitions = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(count_transition_up = cumsum(transition == "up"),
+           count_transition_down = cumsum(transition == "down"),
+           count_transition_stay = cumsum(transition == "stay"))
+}
+
+# Apply "prior" to transition counts by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+apply_transition_count_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(count_transition_up = count_transition_up + count_prior,
+           count_transition_down = count_transition_down + count_prior,
+           count_transition_stay = count_transition_down + count_prior)
+}
+
+
+
+# MODEL FITTING FUNCTIONS
+
+# Fit softmax parameter to each player based on move EVs
+brutefit = function(tmp) {
+  ll_player_move = function(beta) {
+    sum(
+      -log(
+        exp(beta*tmp$ev_move_choice) /
+          rowSums(cbind(exp(beta*tmp$ev_rock), exp(beta*tmp$ev_paper), exp(beta*tmp$ev_scissors)))
+      )
+    )
+  }
+
+  fit = summary(mle(ll_player_move, start = list(beta = 1)))
+  fit_vals = c(tmp$player_id[1],
+               -0.5*fit@m2logL,
+               length(tmp$round_index),
+               fit@coef[,"Estimate"])
+  names(fit_vals) = c("subject", "logL", "n", "softmax")
+  return (fit_vals)
+}
+
+
+# GRAPH STYLE ====
+
+default_plot_theme = theme(
+  # titles
+  plot.title = element_text(face = "bold", size = 24),
+  axis.title.y = element_text(face = "bold", size = 20),
+  axis.title.x = element_text(face = "bold", size = 20),
+  legend.title = element_text(face = "bold", size = 16),
+  # axis text
+  axis.text.y = element_text(size = 14, face = "bold"),
+  axis.text.x = element_text(size = 14, angle = 45, vjust = 0.5, face = "bold"),
+  # legend text
+  legend.text = element_text(size = 16, face = "bold"),
+  # facet text
+  strip.text = element_text(size = 12),
+  # backgrounds, lines
+  panel.background = element_blank(),
+  strip.background = element_blank(),
+
+  panel.grid = element_line(color = "gray"),
+  axis.line = element_line(color = "black"),
+  # positioning
+  legend.position = "bottom",
+  legend.key = element_rect(colour = "transparent", fill = "transparent")
+)
+
+
+# INITIALIZATION ====
+
+# Read in data
+dyad_data = read_dyad_data(DYAD_DATA_FILE, GAME_ROUNDS)
+
+# Add columns
+dyad_data = add_player_prev_move(dyad_data) # previous move
+dyad_data = add_transition(dyad_data, TRANSITION_VALS) # self-transition
+
+
+
+# MODEL FITS ====
+
+# Validate model with move baserates
+dyad_data = count_moves(dyad_data) # Count each player's move choices (cumulative)
+dyad_data = apply_move_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
+dyad_data = calculate_move_probs(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities based on counts from previous round
+dyad_data = calculate_opponent_move_probs(dyad_data) # Calculate opponent's probability of rock, paper, scissors on a given round
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS) # Calculate EV of each move (and chosen move) based on opponent move probabilities
+fit_summary = fit_model_to_subjects(dyad_data) # Fit model
+
+
+
+# Transition model
+
+dyad_data = count_transitions(dyad_data) # Count each player's transitions (cumulative)
+dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
+
+
+
+# MODEL ANALYSIS ====
+
+# View softmax param fits
+fit_summary %>%
+  ggplot(aes(x = "move_counts_model", y = softmax)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "", y = "Softmax parameter estimates") +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+# if predictors are uniform, softmax doesn't matter so much (should be around 0; try setting a prior?)
+
+
+# View LL vals
+fit_summary %>%
+  ggplot(aes(x = "move_counts_model", y = ll_per_round)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", color = "red") +
+  labs(x = "", y = "Log likelihood per round") +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+
+
+

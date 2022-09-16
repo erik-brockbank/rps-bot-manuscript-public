@@ -109,27 +109,114 @@ apply_move_count_prior = function(data, count_prior) {
 
 # Calculate move probability on a given round (based on counts from previous round)
 # NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
-calculate_move_probs = function(data, probability_prior) {
+calculate_move_probs_move_count = function(data, probability_prior) {
   # Calculate totals for probability conversion
   data = data %>%
     rowwise() %>%
-    mutate(count_total = sum(count_rock, count_paper, count_scissors))
+    mutate(count_total_moves = sum(count_rock, count_paper, count_scissors))
   # Calculate move probability
   data = data %>%
     group_by(game_id, player_id) %>%
     mutate(
       prob_rock = ifelse(is.na(lag(count_rock, 1)),
                          probability_prior,
-                         (lag(count_rock, 1) / lag(count_total, 1))),
+                         (lag(count_rock, 1) / lag(count_total_moves, 1))),
       prob_paper = ifelse(is.na(lag(count_paper, 1)),
                           probability_prior,
-                          (lag(count_paper, 1) / lag(count_total, 1))),
+                          (lag(count_paper, 1) / lag(count_total_moves, 1))),
       prob_scissors = ifelse(is.na(lag(count_scissors, 1)),
                              probability_prior,
-                             (lag(count_scissors, 1) / lag(count_total, 1)))
+                             (lag(count_scissors, 1) / lag(count_total_moves, 1)))
     )
   return(data)
 }
+
+
+# TRANSITION FUNCTIONS
+
+# Count cumulative number of transitions by each player
+count_transitions = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(count_transition_up = cumsum(transition == "up"),
+           count_transition_down = cumsum(transition == "down"),
+           count_transition_stay = cumsum(transition == "stay"))
+}
+
+# Apply "prior" to transition counts by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+apply_transition_count_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(count_transition_up = count_transition_up + count_prior,
+           count_transition_down = count_transition_down + count_prior,
+           count_transition_stay = count_transition_stay + count_prior)
+}
+
+
+# Calculate move probability on a given round (based on counts from previous round)
+# NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
+calculate_move_probs_transition = function(data, probability_prior, transition_lookup) {
+  # Calculate totals for probability conversion
+  data = data %>%
+    rowwise() %>%
+    mutate(count_total_transitions = sum(count_transition_up, count_transition_down, count_transition_stay))
+  # Add probability of each transition based on counts from previous round
+  data = data %>%
+    group_by(game_id, player_id) %>%
+    mutate(
+      prob_transition_up = ifelse(is.na(lag(count_total_transitions, 1)), probability_prior,
+                                  lag(count_transition_up, 1) / lag(count_total_transitions, 1)),
+      prob_transition_down = ifelse(is.na(lag(count_total_transitions, 1)), probability_prior,
+                                  lag(count_transition_down, 1) / lag(count_total_transitions, 1)),
+      prob_transition_stay = ifelse(is.na(lag(count_total_transitions, 1)), probability_prior,
+                                  lag(count_transition_stay, 1) / lag(count_total_transitions, 1))
+    )
+  # Calculate move probability
+  data = data %>%
+    group_by(game_id, player_id) %>%
+    rowwise() %>%
+    mutate(
+      # Rock probability is either prior or transition probability *as of previous round* for
+      # transition indicated by previous round's move -> "rock"
+      prob_rock = ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                         # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                         probability_prior,
+                         # Else, probability of rock is appropriate transition probability from above for previous move -> "rock"
+                         case_when(
+                           transition_lookup[player_prev_move, "rock"] == "up" ~ prob_transition_up,
+                           transition_lookup[player_prev_move, "rock"] == "down" ~ prob_transition_down,
+                           transition_lookup[player_prev_move, "rock"] == "stay" ~ prob_transition_stay,
+                           TRUE ~ probability_prior # NB: this should never be activated
+                           )
+                         ),
+      prob_paper = ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                          probability_prior,
+                          case_when(
+                            transition_lookup[player_prev_move, "paper"] == "up" ~ prob_transition_up,
+                            transition_lookup[player_prev_move, "paper"] == "down" ~ prob_transition_down,
+                            transition_lookup[player_prev_move, "paper"] == "stay" ~ prob_transition_stay,
+                            TRUE ~ probability_prior # NB: this should never be activated
+                            )
+                          ),
+      prob_scissors = ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                             probability_prior,
+                             case_when(
+                               transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_transition_up,
+                               transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_transition_down,
+                               transition_lookup[player_prev_move, "scissors"] == "stay" ~ prob_transition_stay,
+                               TRUE ~ probability_prior # NB: this should never be activated
+                               )
+                             )
+
+    )
+  return(data)
+}
+
+
+
+# MODEL EV CALCULATION
 
 # Calculate opponent's probability of rock, paper, scissors on a given round
 # Transfers move probability from opponent's rows
@@ -179,6 +266,32 @@ calculate_move_ev = function(data, outcome_matrix) {
   return(data)
 }
 
+
+
+# MODEL FITTING FUNCTIONS
+
+# Fit softmax parameter to each player based on move EVs
+brutefit = function(tmp) {
+  ll_player_move = function(beta) {
+    sum(
+      -log(
+        exp(beta*tmp$ev_move_choice) /
+          rowSums(cbind(exp(beta*tmp$ev_rock), exp(beta*tmp$ev_paper), exp(beta*tmp$ev_scissors)))
+      )
+    )
+  }
+
+  fit = summary(mle(ll_player_move, start = list(beta = 1)))
+  fit_vals = c(tmp$player_id[1],
+               -0.5*fit@m2logL,
+               length(tmp$round_index),
+               fit@coef[,"Estimate"])
+  names(fit_vals) = c("subject", "logL", "n", "softmax")
+  return (fit_vals)
+}
+
+
+
 fit_model_to_subjects = function(data) {
   # Dataframe for storing model fits
   fit_summary = data.frame(
@@ -211,53 +324,6 @@ fit_model_to_subjects = function(data) {
   fit_summary = fit_summary %>%
     mutate(ll_per_round = logL / n)
   return(fit_summary)
-}
-
-
-# TRANSITION FUNCTIONS
-
-# Count cumulative number of transitions by each player
-count_transitions = function(data) {
-  data %>%
-    group_by(player_id) %>%
-    mutate(count_transition_up = cumsum(transition == "up"),
-           count_transition_down = cumsum(transition == "down"),
-           count_transition_stay = cumsum(transition == "stay"))
-}
-
-# Apply "prior" to transition counts by increasing all counts by `count_prior`
-# Counts start at `count_prior` rather than 0, increase from that amount
-apply_transition_count_prior = function(data, count_prior) {
-  data %>%
-    group_by(player_id) %>%
-    rowwise() %>%
-    mutate(count_transition_up = count_transition_up + count_prior,
-           count_transition_down = count_transition_down + count_prior,
-           count_transition_stay = count_transition_down + count_prior)
-}
-
-
-
-# MODEL FITTING FUNCTIONS
-
-# Fit softmax parameter to each player based on move EVs
-brutefit = function(tmp) {
-  ll_player_move = function(beta) {
-    sum(
-      -log(
-        exp(beta*tmp$ev_move_choice) /
-          rowSums(cbind(exp(beta*tmp$ev_rock), exp(beta*tmp$ev_paper), exp(beta*tmp$ev_scissors)))
-      )
-    )
-  }
-
-  fit = summary(mle(ll_player_move, start = list(beta = 1)))
-  fit_vals = c(tmp$player_id[1],
-               -0.5*fit@m2logL,
-               length(tmp$round_index),
-               fit@coef[,"Estimate"])
-  names(fit_vals) = c("subject", "logL", "n", "softmax")
-  return (fit_vals)
 }
 
 
@@ -304,28 +370,42 @@ dyad_data = add_transition(dyad_data, TRANSITION_VALS) # self-transition
 # Validate model with move baserates
 dyad_data = count_moves(dyad_data) # Count each player's move choices (cumulative)
 dyad_data = apply_move_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
-dyad_data = calculate_move_probs(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities based on counts from previous round
+dyad_data = calculate_move_probs_move_count(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities based on counts from previous round
 dyad_data = calculate_opponent_move_probs(dyad_data) # Calculate opponent's probability of rock, paper, scissors on a given round
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS) # Calculate EV of each move (and chosen move) based on opponent move probabilities
-fit_summary = fit_model_to_subjects(dyad_data) # Fit model
+fit_summary_moves = fit_model_to_subjects(dyad_data) # Fit model
+fit_summary_moves = fit_summary_moves %>% mutate(model = "move baserate")
 
 
 
 # Transition model
-
 dyad_data = count_transitions(dyad_data) # Count each player's transitions (cumulative)
 dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
+# NB: the line below is the only part of the model fit that differs from the above
+dyad_data = calculate_move_probs_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
+dyad_data = calculate_opponent_move_probs(dyad_data) # Calculate opponent's probability of rock, paper, scissors on a given round
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS) # Calculate EV of each move (and chosen move) based on opponent move probabilities
+fit_summary_transitions = fit_model_to_subjects(dyad_data) # Fit model
+fit_summary_transitions = fit_summary_transitions %>% mutate(model = "transition baserate")
 
 
 
 # MODEL ANALYSIS ====
 
+fit_summary = rbind(fit_summary_moves,
+                    fit_summary_transitions)
+
+
+
 # View softmax param fits
+fit_summary %>% group_by(model) %>% summarize(mean(softmax))
+# Plot them
 fit_summary %>%
-  ggplot(aes(x = "move_counts_model", y = softmax)) +
+  ggplot(aes(x = model, y = softmax, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
+  geom_point(stat="summary", fun="mean", size = 5) +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  labs(x = "", y = "Softmax parameter estimates") +
+  labs(y = "Softmax parameter estimates") +
   default_plot_theme +
   theme(axis.title.x = element_blank(),
         axis.text.x = element_blank())
@@ -333,11 +413,14 @@ fit_summary %>%
 
 
 # View LL vals
+fit_summary %>% group_by(model) %>% summarize(mean(ll_per_round))
+# Plot them
 fit_summary %>%
-  ggplot(aes(x = "move_counts_model", y = ll_per_round)) +
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", color = "red") +
-  labs(x = "", y = "Log likelihood per round") +
+  geom_point(stat="summary", fun="mean", size = 5) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", color = "gray") +
+  labs(y = "Log likelihood per round") +
   default_plot_theme +
   theme(axis.title.x = element_blank(),
         axis.text.x = element_blank())

@@ -71,16 +71,49 @@ add_player_prev_move = function(data) {
     mutate(player_prev_move = lag(player_move, 1))
 }
 
+# Add column for *opponent's* previous move
+add_opponent_prev_move = function(data) {
+  data %>%
+    group_by(game_id, round_index) %>%
+    mutate(
+      # In rows for each round, opponent's prev move is "player_prev_move"
+      # val of opposite row (either lead or lag)
+      opponent_prev_move = ifelse(
+        is.na(lag(player_prev_move, 1)),
+        lead(player_prev_move, 1),
+        lag(player_prev_move, 1)
+      )
+    )
+}
+
 # Add column for player's transition
 # NB: in rows where move or previous move are "none" or NA, transition is "none"
 add_transition = function(data, transition_matrix) {
   data %>%
     group_by(player_id) %>%
     rowwise() %>%
-    mutate(transition = ifelse(
-      is.na(player_move) || is.na(player_prev_move) || player_move == "none" || player_prev_move == "none",
-      "none",
-      transition_matrix[player_prev_move, player_move]))
+    mutate(
+      transition = ifelse(
+        is.na(player_move) || is.na(player_prev_move) || player_move == "none" || player_prev_move == "none",
+        "none",
+        transition_matrix[player_prev_move, player_move]
+      )
+    )
+}
+
+# Add column for player's *opponent* transition
+# NB: in rows where move or previous move are "none" or NA, opponent transition is "none"
+# TODO this function is almost identical to the above; possible consolidation?
+add_opponent_transition = function(data, transition_matrix) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      opponent_transition = ifelse(
+        is.na(player_move) || is.na(opponent_prev_move) || player_move == "none" || opponent_prev_move == "none",
+        "none",
+        transition_matrix[opponent_prev_move, player_move]
+      ))
 }
 
 
@@ -107,7 +140,7 @@ apply_move_count_prior = function(data, count_prior) {
 }
 
 
-# Calculate move probability on a given round (based on counts from previous round)
+# Calculate move probability on a given round based on *move* counts from previous round
 # NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
 calculate_move_probs_move_count = function(data, probability_prior) {
   # Calculate totals for probability conversion
@@ -155,7 +188,7 @@ apply_transition_count_prior = function(data, count_prior) {
 }
 
 
-# Calculate move probability on a given round (based on counts from previous round)
+# Calculate move probability on a given round based on *transition* counts from previous round
 # NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
 calculate_move_probs_transition = function(data, probability_prior, transition_lookup) {
   # Calculate totals for probability conversion
@@ -209,6 +242,97 @@ calculate_move_probs_transition = function(data, probability_prior, transition_l
                                TRUE ~ probability_prior # NB: this should never be activated
                                )
                              )
+
+    )
+  return(data)
+}
+
+
+
+# OPPONENT TRANSITION FUNCTIONS
+
+# Count cumulative number of transitions by each player
+# TODO this function is almost identical to the one above for transitions; possible consolidation?
+count_opponent_transitions = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(count_opponent_transition_up = cumsum(opponent_transition == "up"),
+           count_opponent_transition_down = cumsum(opponent_transition == "down"),
+           count_opponent_transition_stay = cumsum(opponent_transition == "stay"))
+}
+
+# Apply "prior" to opponent transition counts by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+# TODO this function is almost identical to the one above for transitions; possible consolidation?
+apply_opponent_transition_count_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(count_opponent_transition_up = count_opponent_transition_up + count_prior,
+           count_opponent_transition_down = count_opponent_transition_down + count_prior,
+           count_opponent_transition_stay = count_opponent_transition_stay + count_prior)
+}
+
+# Calculate move probability on a given round based on *opponent transition* counts from previous round
+# NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
+calculate_move_probs_opponent_transition = function(data, probability_prior, transition_lookup) {
+  # Calculate totals for probability conversion
+  data = data %>%
+    rowwise() %>%
+    mutate(count_total_opponent_transitions = sum(count_opponent_transition_up, count_opponent_transition_down, count_opponent_transition_stay))
+  # Add probability of each opponent transition based on counts from previous round
+  data = data %>%
+    group_by(game_id, player_id) %>%
+    mutate(
+      prob_opponent_transition_up = ifelse(
+        is.na(lag(count_total_opponent_transitions, 1)),
+        probability_prior,
+        lag(count_opponent_transition_up, 1) / lag(count_total_opponent_transitions, 1)),
+      prob_opponent_transition_down = ifelse(
+        is.na(lag(count_total_opponent_transitions, 1)),
+        probability_prior,
+        lag(count_opponent_transition_down, 1) / lag(count_total_opponent_transitions, 1)),
+      prob_opponent_transition_stay = ifelse(
+        is.na(lag(count_total_opponent_transitions, 1)),
+        probability_prior,
+        lag(count_opponent_transition_stay, 1) / lag(count_total_opponent_transitions, 1))
+    )
+  # Calculate move probability
+  data = data %>%
+    group_by(game_id, player_id) %>%
+    rowwise() %>%
+    mutate(
+      # Rock probability is either prior or opponent transition probability
+      # *as of previous round* for opponent transition indicated by opponent's previous round move -> "rock"
+      prob_rock = ifelse(is.na(opponent_prev_move) | opponent_prev_move == "none",
+                         # If opponent previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                         probability_prior,
+                         # Else, probability of rock is appropriate *opponent* transition probability from above for opponent previous move -> "rock"
+                         case_when(
+                           transition_lookup[opponent_prev_move, "rock"] == "up" ~ prob_opponent_transition_up,
+                           transition_lookup[opponent_prev_move, "rock"] == "down" ~ prob_opponent_transition_down,
+                           transition_lookup[opponent_prev_move, "rock"] == "stay" ~ prob_opponent_transition_stay,
+                           TRUE ~ probability_prior # NB: this should never be activated
+                         )
+      ),
+      prob_paper = ifelse(is.na(opponent_prev_move) | opponent_prev_move == "none",
+                          probability_prior,
+                          case_when(
+                            transition_lookup[opponent_prev_move, "paper"] == "up" ~ prob_opponent_transition_up,
+                            transition_lookup[opponent_prev_move, "paper"] == "down" ~ prob_opponent_transition_down,
+                            transition_lookup[opponent_prev_move, "paper"] == "stay" ~ prob_opponent_transition_stay,
+                            TRUE ~ probability_prior # NB: this should never be activated
+                          )
+      ),
+      prob_scissors = ifelse(is.na(opponent_prev_move) | opponent_prev_move == "none",
+                             probability_prior,
+                             case_when(
+                               transition_lookup[opponent_prev_move, "scissors"] == "up" ~ prob_opponent_transition_up,
+                               transition_lookup[opponent_prev_move, "scissors"] == "down" ~ prob_opponent_transition_down,
+                               transition_lookup[opponent_prev_move, "scissors"] == "stay" ~ prob_opponent_transition_stay,
+                               TRUE ~ probability_prior # NB: this should never be activated
+                             )
+      )
 
     )
   return(data)
@@ -361,7 +485,9 @@ dyad_data = read_dyad_data(DYAD_DATA_FILE, GAME_ROUNDS)
 
 # Add columns
 dyad_data = add_player_prev_move(dyad_data) # previous move
+dyad_data = add_opponent_prev_move(dyad_data) # opponent previous move
 dyad_data = add_transition(dyad_data, TRANSITION_VALS) # self-transition
+dyad_data = add_opponent_transition(dyad_data, TRANSITION_VALS) # self-transition
 
 
 
@@ -378,22 +504,45 @@ fit_summary_moves = fit_summary_moves %>% mutate(model = "move baserate")
 
 
 
-# Transition model
-dyad_data = count_transitions(dyad_data) # Count each player's transitions (cumulative)
-dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
+# Self-transition model
+dyad_data = count_transitions(dyad_data)
+dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
 # NB: the line below is the only part of the model fit that differs from the above
 dyad_data = calculate_move_probs_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
-dyad_data = calculate_opponent_move_probs(dyad_data) # Calculate opponent's probability of rock, paper, scissors on a given round
-dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS) # Calculate EV of each move (and chosen move) based on opponent move probabilities
-fit_summary_transitions = fit_model_to_subjects(dyad_data) # Fit model
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_transitions = fit_model_to_subjects(dyad_data)
 fit_summary_transitions = fit_summary_transitions %>% mutate(model = "transition baserate")
+
+
+# Opponent-transition model
+dyad_data = count_opponent_transitions(dyad_data)
+dyad_data = apply_opponent_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
+# NB: the line below is the only part of the model fit that differs from the above
+dyad_data = calculate_move_probs_opponent_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_opponent_transitions = fit_model_to_subjects(dyad_data)
+fit_summary_opponent_transitions = fit_summary_opponent_transitions %>% mutate(model = "opponent transition baserate")
+
+
+# Outcome-transition model
+
+
+
+# Next: move given prior move and move given opponent prior move
+
+
+
+# Finally: move given prior move, opponent prior move; move given prior two moves; transition given prior transition, prior outcome
 
 
 
 # MODEL ANALYSIS ====
 
 fit_summary = rbind(fit_summary_moves,
-                    fit_summary_transitions)
+                    fit_summary_transitions,
+                    fit_summary_opponent_transitions)
 
 
 

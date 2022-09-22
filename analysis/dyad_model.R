@@ -144,6 +144,26 @@ add_opponent_prev_move_current_move = function(data) {
       ))
 }
 
+# Add column for each player's previous outcome
+add_prev_outcome = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(player_prev_outcome = lag(player_outcome, 1))
+}
+
+# Add column for combination of previous outcome and player's current transition as a string
+add_outcome_transition = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      outcome_transition = ifelse(
+        is.na(player_prev_outcome) || transition == "none",
+        "none",
+        paste(player_prev_outcome, transition, sep = "-")
+      ))
+}
+
 
 # MOVE COUNT FUNCTIONS
 
@@ -484,7 +504,7 @@ calculate_move_probs_move_prev_move = function(data, probability_prior) {
     rowwise() %>%
     mutate(
       prob_rock = ifelse(is.na(player_prev_move) | player_prev_move == "none",
-                         # If opponent previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                         # If player previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
                          probability_prior,
                          # Else, probability of rock is probability from above for player previous move -> "rock"
                          case_when(
@@ -583,7 +603,7 @@ apply_opponent_prev_move_current_move_count_prior = function(data, count_prior) 
 # Calculate move probability on a given round based on *opponent* previous move, current move counts from previous round
 # NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
 calculate_move_probs_opponent_move_prev_move = function(data, probability_prior) {
-  # First, calculate probability of each *opponent* previous move, current move transition
+  # First, calculate probability of each *opponent previous move*, current move transition
   # as of the previous round
   data = data %>%
     group_by(player_id) %>%
@@ -659,6 +679,232 @@ calculate_move_probs_opponent_move_prev_move = function(data, probability_prior)
                                opponent_prev_move == "scissors" ~ prob_opp_scissors_scissors,
                                TRUE ~ probability_prior # NB: this should never be activated
                              )
+      )
+    )
+  return(data)
+}
+
+
+# OUTCOME-TRANSITION FUNCTIONS
+
+# Count cumulative number of each previous outcome for each player
+count_prev_outcomes = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(
+      count_prev_win = cumsum(replace_na(player_prev_outcome, 0) == "win"),
+      count_prev_loss = cumsum(replace_na(player_prev_outcome, 0) == "loss"),
+      count_prev_tie = cumsum(replace_na(player_prev_outcome, 0) == "tie"),
+    )
+}
+
+# Count cumulative number of combinations of previous outcome, current transition
+# TODO could probably consolidate this with nested iteration over outcomes, transitions
+count_prev_outcome_current_transition = function(data) {
+  data %>%
+    group_by(player_id) %>%
+    mutate(
+      count_win_up = cumsum(outcome_transition == "win-up"),
+      count_win_down = cumsum(outcome_transition == "win-down"),
+      count_win_stay = cumsum(outcome_transition == "win-stay"),
+      count_loss_up = cumsum(outcome_transition == "loss-up"),
+      count_loss_down = cumsum(outcome_transition == "loss-down"),
+      count_loss_stay = cumsum(outcome_transition == "loss-stay"),
+      count_tie_up = cumsum(outcome_transition == "tie-up"),
+      count_tie_down = cumsum(outcome_transition == "tie-down"),
+      count_tie_stay = cumsum(outcome_transition == "tie-stay")
+    )
+}
+
+# Apply "prior" to previous outcome counts by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+# NOTE we apply a prior count of 3 here rather than 1
+apply_outcome_count_prior = function(data, count_prior = 3) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      count_prev_win = count_prev_win + count_prior,
+      count_prev_loss = count_prev_loss + count_prior,
+      count_prev_tie = count_prev_tie + count_prior
+    )
+}
+
+# Apply "prior" to combination of previous outcome, current transition counts by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+apply_outcome_transition_count_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      count_win_up = count_win_up + count_prior,
+      count_win_down = count_win_down + count_prior,
+      count_win_stay = count_win_stay + count_prior,
+      count_loss_up = count_loss_up + count_prior,
+      count_loss_down = count_loss_down + count_prior,
+      count_loss_stay = count_loss_stay + count_prior,
+      count_tie_up = count_tie_up + count_prior,
+      count_tie_down = count_tie_down + count_prior,
+      count_tie_stay = count_tie_stay + count_prior
+    )
+}
+
+# Calculate move probability on a given round based on previous outcome, current transition counts from previous round
+# NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
+calculate_move_probs_outcome_transition = function(data, probability_prior, transition_lookup) {
+  # First, calculate probability of each previous outcome, current transition
+  # as of the previous round
+  data = data %>%
+    group_by(player_id) %>%
+    mutate(
+      prob_win_up = ifelse(is.na(lag(count_win_up, 1)),
+                           probability_prior,
+                           lag(count_win_up, 1) / lag(count_prev_win, 1)
+      ),
+      prob_win_down = ifelse(is.na(lag(count_win_down, 1)),
+                             probability_prior,
+                             lag(count_win_down, 1) / lag(count_prev_win, 1)
+      ),
+      prob_win_stay = ifelse(is.na(lag(count_win_stay, 1)),
+                             probability_prior,
+                             lag(count_win_stay, 1) / lag(count_prev_win, 1)
+      ),
+      prob_loss_up = ifelse(is.na(lag(count_loss_up, 1)),
+                            probability_prior,
+                            lag(count_loss_up, 1) / lag(count_prev_loss, 1)
+      ),
+      prob_loss_down = ifelse(is.na(lag(count_loss_down, 1)),
+                              probability_prior,
+                              lag(count_loss_down, 1) / lag(count_prev_loss, 1)
+      ),
+      prob_loss_stay = ifelse(is.na(lag(count_loss_stay, 1)),
+                              probability_prior,
+                              lag(count_loss_stay, 1) / lag(count_prev_loss, 1)
+      ),
+      prob_tie_up = ifelse(is.na(lag(count_tie_up, 1)),
+                           probability_prior,
+                           lag(count_tie_up, 1) / lag(count_prev_tie, 1)
+      ),
+      prob_tie_down = ifelse(is.na(lag(count_tie_down, 1)),
+                             probability_prior,
+                             lag(count_tie_down, 1) / lag(count_prev_tie, 1)
+      ),
+      prob_tie_stay = ifelse(is.na(lag(count_tie_stay, 1)),
+                             probability_prior,
+                             lag(count_tie_stay, 1) / lag(count_prev_tie, 1)
+      )
+    )
+
+  # Now, select move probabilities calculated above based on player previous outcome
+  # TODO surely there's a more efficient way to do this...
+  data = data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      prob_rock = ifelse(is.na(player_prev_outcome),
+                         # If player previous outcome was NA, probability of rock is just prior. This is a bit clumsy but conservative.
+                         probability_prior,
+                         # Else, probability of rock is probability from above for player previous outcome -> transition that leads to "rock"
+                         case_when(
+                           player_prev_outcome == "win" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                 # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                 probability_prior,
+                                                                 # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                 case_when(
+                                                                   transition_lookup[player_prev_move, "rock"] == "up" ~ prob_win_up,
+                                                                   transition_lookup[player_prev_move, "rock"] == "down" ~ prob_win_down,
+                                                                   transition_lookup[player_prev_move, "rock"] == "stay" ~ prob_win_stay,
+                                                                   TRUE ~ probability_prior)),
+                           player_prev_outcome == "loss" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                 # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                 probability_prior,
+                                                                 # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                 case_when(
+                                                                   transition_lookup[player_prev_move, "rock"] == "up" ~ prob_loss_up,
+                                                                   transition_lookup[player_prev_move, "rock"] == "down" ~ prob_loss_down,
+                                                                   transition_lookup[player_prev_move, "rock"] == "stay" ~ prob_loss_stay,
+                                                                   TRUE ~ probability_prior)),
+                           player_prev_outcome == "tie" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                 # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                 probability_prior,
+                                                                 # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                 case_when(
+                                                                   transition_lookup[player_prev_move, "rock"] == "up" ~ prob_tie_up,
+                                                                   transition_lookup[player_prev_move, "rock"] == "down" ~ prob_tie_down,
+                                                                   transition_lookup[player_prev_move, "rock"] == "stay" ~ prob_tie_stay,
+                                                                   TRUE ~ probability_prior)),
+                           TRUE ~ probability_prior # NB: this should never be activated
+                         )
+      ),
+      prob_paper = ifelse(is.na(player_prev_outcome),
+                         # If player previous outcome was NA, probability of rock is just prior. This is a bit clumsy but conservative.
+                         probability_prior,
+                         # Else, probability of rock is probability from above for player previous outcome -> transition that leads to "rock"
+                         case_when(
+                           player_prev_outcome == "win" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                 # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                 probability_prior,
+                                                                 # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                 case_when(
+                                                                   transition_lookup[player_prev_move, "paper"] == "up" ~ prob_win_up,
+                                                                   transition_lookup[player_prev_move, "paper"] == "down" ~ prob_win_down,
+                                                                   transition_lookup[player_prev_move, "paper"] == "stay" ~ prob_win_stay,
+                                                                   TRUE ~ probability_prior)),
+                           player_prev_outcome == "loss" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                  # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                  probability_prior,
+                                                                  # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                  case_when(
+                                                                    transition_lookup[player_prev_move, "paper"] == "up" ~ prob_loss_up,
+                                                                    transition_lookup[player_prev_move, "paper"] == "down" ~ prob_loss_down,
+                                                                    transition_lookup[player_prev_move, "paper"] == "stay" ~ prob_loss_stay,
+                                                                    TRUE ~ probability_prior)),
+                           player_prev_outcome == "tie" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                 # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                 probability_prior,
+                                                                 # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                 case_when(
+                                                                   transition_lookup[player_prev_move, "paper"] == "up" ~ prob_tie_up,
+                                                                   transition_lookup[player_prev_move, "paper"] == "down" ~ prob_tie_down,
+                                                                   transition_lookup[player_prev_move, "paper"] == "stay" ~ prob_tie_stay,
+                                                                   TRUE ~ probability_prior)),
+                           TRUE ~ probability_prior # NB: this should never be activated
+                         )
+      ),
+      prob_scissors = ifelse(is.na(player_prev_outcome),
+                          # If player previous outcome was NA, probability of rock is just prior. This is a bit clumsy but conservative.
+                          probability_prior,
+                          # Else, probability of rock is probability from above for player previous outcome -> transition that leads to "rock"
+                          case_when(
+                            player_prev_outcome == "win" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                  # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                  probability_prior,
+                                                                  # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                  case_when(
+                                                                    transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_win_up,
+                                                                    transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_win_down,
+                                                                    transition_lookup[player_prev_move, "scissors"] == "stay" ~ prob_win_stay,
+                                                                    TRUE ~ probability_prior)),
+                            player_prev_outcome == "loss" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                   # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                   probability_prior,
+                                                                   # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                   case_when(
+                                                                     transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_loss_up,
+                                                                     transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_loss_down,
+                                                                     transition_lookup[player_prev_move, "scissors"] == "stay" ~ prob_loss_stay,
+                                                                     TRUE ~ probability_prior)),
+                            player_prev_outcome == "tie" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                                                                  # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                                                                  probability_prior,
+                                                                  # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
+                                                                  case_when(
+                                                                    transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_tie_up,
+                                                                    transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_tie_down,
+                                                                    transition_lookup[player_prev_move, "scissors"] == "stay" ~ prob_tie_stay,
+                                                                    TRUE ~ probability_prior)),
+                            TRUE ~ probability_prior # NB: this should never be activated
+                          )
       )
     )
   return(data)
@@ -799,7 +1045,7 @@ default_plot_theme = theme(
   panel.grid = element_line(color = "gray"),
   axis.line = element_line(color = "black"),
   # positioning
-  legend.position = "bottom",
+  legend.position = "right",
   legend.key = element_rect(colour = "transparent", fill = "transparent")
 )
 
@@ -816,6 +1062,9 @@ dyad_data = add_transition(dyad_data, TRANSITION_VALS) # self-transition
 dyad_data = add_opponent_transition(dyad_data, TRANSITION_VALS) # self-transition
 dyad_data = add_player_prev_move_current_move(dyad_data) # combination of previous move, current move
 dyad_data = add_opponent_prev_move_current_move(dyad_data) # combination of *opponent* previous move, current move
+dyad_data = add_prev_outcome(dyad_data) # previous outcome
+dyad_data = add_outcome_transition(dyad_data) # combination of previous outcome, transition
+
 
 # MODEL FITS ====
 
@@ -882,7 +1131,17 @@ fit_summary_opponent_move_prev_move = fit_summary_opponent_move_prev_move %>% mu
 
 
 # Outcome-transition model
-
+# NB: two different "count" calls here to determine base rates (and two prior augments)
+dyad_data = count_prev_outcomes(dyad_data)
+dyad_data = count_prev_outcome_current_transition(dyad_data)
+dyad_data = apply_outcome_count_prior(dyad_data, count_prior = 3) # NOTE prior here
+dyad_data = apply_outcome_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
+# NB: the line below is the only part of the model fit that differs from the previous models
+dyad_data = calculate_move_probs_outcome_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_outcome_transition = fit_model_to_subjects(dyad_data)
+fit_summary_outcome_transition = fit_summary_outcome_transition %>% mutate(model = "outcome given previous transition")
 
 
 
@@ -896,7 +1155,8 @@ fit_summary = rbind(fit_summary_moves,
                     fit_summary_transitions,
                     fit_summary_opponent_transitions,
                     fit_summary_move_prev_move,
-                    fit_summary_opponent_move_prev_move)
+                    fit_summary_opponent_move_prev_move,
+                    fit_summary_outcome_transition)
 
 
 
@@ -905,13 +1165,18 @@ fit_summary %>% group_by(model) %>% summarize(mean(softmax))
 # Plot them
 fit_summary %>%
   ggplot(aes(x = model, y = softmax, color = model)) +
-  geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
-  geom_point(stat="summary", fun="mean", size = 5) +
+  # geom_jitter(width = 0.1, height = 0, alpha = 0.25) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   labs(y = "Softmax parameter estimates") +
   default_plot_theme +
   theme(axis.title.x = element_blank(),
         axis.text.x = element_blank())
+# TODO fix order, switch to viridis colors
+
 # if predictors are uniform, softmax doesn't matter so much (should be around 0; try setting a prior?)
 
 

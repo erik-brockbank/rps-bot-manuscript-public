@@ -1157,42 +1157,94 @@ fit_summary = rbind(fit_summary_moves,
                     fit_summary_move_prev_move,
                     fit_summary_opponent_move_prev_move,
                     fit_summary_outcome_transition)
-
+# Set order of conditions
+fit_summary$model = factor(fit_summary$model,
+                           levels = c("move baserate",
+                                      "transition baserate", "opponent transition baserate",
+                                      "move given previous move", "move given opponent previous move",
+                                      "outcome given previous transition"))
+# Format for figure
+fit_summary$model_str = str_wrap(fit_summary$model, 20)
 
 
 # View softmax param fits
 fit_summary %>% group_by(model) %>% summarize(mean(softmax))
-# Plot them
-fit_summary %>%
+# Summary plot
+p1 = fit_summary %>%
   ggplot(aes(x = model, y = softmax, color = model)) +
-  # geom_jitter(width = 0.1, height = 0, alpha = 0.25) +
   stat_summary(fun = "mean", geom = "pointrange",
                fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
                fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
                size = 1.5) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  labs(y = "Softmax parameter estimates") +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary$model_str)) +
   default_plot_theme +
   theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank())
-# TODO fix order, switch to viridis colors
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+        )
+# Individual plot
+p2 = fit_summary %>%
+  ggplot(aes(x = model, y = softmax, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  labs(y = "Softmax parameter estimates") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
 
+p1
+p2
+p2 + p1
 # if predictors are uniform, softmax doesn't matter so much (should be around 0; try setting a prior?)
 
 
 # View LL vals
 fit_summary %>% group_by(model) %>% summarize(mean(ll_per_round))
-# Plot them
-fit_summary %>%
+# Summary plot
+p1 = fit_summary %>%
   ggplot(aes(x = model, y = ll_per_round, color = model)) +
-  geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
-  geom_point(stat="summary", fun="mean", size = 5) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", color = "black") +
-  labs(y = "Log likelihood per round") +
+  # geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
+  # geom_point(stat="summary", fun="mean", size = 5) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary$model_str)) +
   default_plot_theme +
   theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank())
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+        )
+# Individual plot
+p2 = fit_summary %>%
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  labs(y = "Negative log likelihood (per round)") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
 
-
-
-
+p1
+p2
+p2 + p1

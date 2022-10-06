@@ -176,6 +176,7 @@ count_moves = function(data) {
            count_scissors = cumsum(player_move == "scissors"))
 }
 
+
 # Apply "prior" to move rates by increasing all counts by `count_prior`
 # Counts start at `count_prior` rather than 0, increase from that amount
 apply_move_count_prior = function(data, count_prior) {
@@ -197,7 +198,7 @@ calculate_move_probs_move_count = function(data, probability_prior) {
     mutate(count_total_moves = sum(count_rock, count_paper, count_scissors))
   # Calculate move probability
   data = data %>%
-    group_by(game_id, player_id) %>%
+    group_by(player_id) %>%
     mutate(
       prob_rock = ifelse(is.na(lag(count_rock, 1)),
                          probability_prior,
@@ -211,6 +212,77 @@ calculate_move_probs_move_count = function(data, probability_prior) {
     )
   return(data)
 }
+
+
+# WEIGHTED MOVE COUNT FUNCTIONS
+
+# Count *weighted* cumulative number of rock, paper, and scissors moves by each player
+# Starts by splitting out data frame into a list with separate items for each player_id
+# Then re-combines using map_dfr, which applies the function below to each element in the list,
+# then aggregates list items into a single dataframe.
+# The function takes in each player's rows, does a rowwise calculation to get the
+# weighted count of rock, paper, and scissors subject to `exp_slope` exponential weighting
+count_moves_w = function(data, exp_slope) {
+  data = data %>%
+    split(data$player_id) %>%
+    map_dfr(
+      function(dat) {
+        dat %>%
+          rowwise() %>%
+          mutate(
+            # moves = list(.$player_move[1:round_index]), # NB: debugging to confirm that move sequence is captured
+            count_rock_w = sum(
+              # In each row, fetch player moves from 1:round index, reverse them
+              # to weight most recent moves highest, get all previous rows where move = "rock",
+              # apply exponential weight to those rows (1:round_index)^-1, then sum
+              (rev(.$player_move[1:round_index]) == "rock") * (seq_len(round_index)^exp_slope)
+            ),
+            count_paper_w = sum((rev(.$player_move[1:round_index]) == "paper") * (seq_len(round_index)^exp_slope)),
+            count_scissors_w = sum((rev(.$player_move[1:round_index]) == "scissors") * (seq_len(round_index)^exp_slope))
+          )
+      }
+    )
+}
+
+
+
+# Increase all weighted move counts by `count_prior`
+# NB: this seems different from applying a prior because counts are not cumulative here
+# This *shifts* all move counts; is this necessary?
+apply_move_count_w_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(count_rock_w = count_rock_w + count_prior,
+           count_paper_w = count_paper_w + count_prior,
+           count_scissors_w = count_scissors_w + count_prior)
+}
+
+# Calculate move probability on a given round based on *weighted* move counts from previous round
+# NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
+calculate_move_probs_move_count_w = function(data, probability_prior) {
+  # Calculate totals for probability conversion
+  data = data %>%
+    rowwise() %>%
+    mutate(count_total_moves_w = sum(count_rock_w, count_paper_w, count_scissors_w))
+  # Calculate move probability
+  data = data %>%
+    group_by(player_id) %>%
+    mutate(
+      prob_rock = ifelse(is.na(lag(count_rock_w, 1)),
+                         probability_prior,
+                         (lag(count_rock_w, 1) / lag(count_total_moves_w, 1))),
+      prob_paper = ifelse(is.na(lag(count_paper_w, 1)),
+                          probability_prior,
+                          (lag(count_paper_w, 1) / lag(count_total_moves_w, 1))),
+      prob_scissors = ifelse(is.na(lag(count_scissors_w, 1)),
+                             probability_prior,
+                             (lag(count_scissors_w, 1) / lag(count_total_moves_w, 1)))
+    )
+  return(data)
+}
+
+
 
 
 # TRANSITION FUNCTIONS
@@ -245,8 +317,7 @@ calculate_move_probs_transition = function(data, probability_prior, transition_l
     mutate(count_total_transitions = sum(count_transition_up, count_transition_down, count_transition_stay))
   # Add probability of each transition based on counts from previous round
   data = data %>%
-    # TODO can we get rid of `game_id` in groupby here? And elsewhere?
-    group_by(game_id, player_id) %>%
+    group_by(player_id) %>%
     mutate(
       prob_transition_up = ifelse(is.na(lag(count_total_transitions, 1)), probability_prior,
                                   lag(count_transition_up, 1) / lag(count_total_transitions, 1)),
@@ -257,7 +328,7 @@ calculate_move_probs_transition = function(data, probability_prior, transition_l
     )
   # Calculate move probability
   data = data %>%
-    group_by(game_id, player_id) %>%
+    group_by(player_id) %>%
     rowwise() %>%
     mutate(
       # Rock probability is either prior or transition probability *as of previous round* for
@@ -331,7 +402,7 @@ calculate_move_probs_opponent_transition = function(data, probability_prior, tra
     mutate(count_total_opponent_transitions = sum(count_opponent_transition_up, count_opponent_transition_down, count_opponent_transition_stay))
   # Add probability of each opponent transition based on counts from previous round
   data = data %>%
-    group_by(game_id, player_id) %>%
+    group_by(player_id) %>%
     mutate(
       prob_opponent_transition_up = ifelse(
         is.na(lag(count_total_opponent_transitions, 1)),
@@ -348,7 +419,7 @@ calculate_move_probs_opponent_transition = function(data, probability_prior, tra
     )
   # Calculate move probability
   data = data %>%
-    group_by(game_id, player_id) %>%
+    group_by(player_id) %>%
     rowwise() %>%
     mutate(
       # Rock probability is either prior or opponent transition probability
@@ -1078,7 +1149,6 @@ fit_summary_moves = fit_model_to_subjects(dyad_data) # Fit model
 fit_summary_moves = fit_summary_moves %>% mutate(model = "move baserate")
 
 
-
 # Self-transition model
 dyad_data = count_transitions(dyad_data)
 dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
@@ -1162,7 +1232,8 @@ fit_summary$model = factor(fit_summary$model,
                            levels = c("move baserate",
                                       "transition baserate", "opponent transition baserate",
                                       "move given previous move", "move given opponent previous move",
-                                      "outcome given previous transition"))
+                                      "outcome given previous transition")
+                           )
 # Format for figure
 fit_summary$model_str = str_wrap(fit_summary$model, 20)
 
@@ -1248,3 +1319,173 @@ p2 = fit_summary %>%
 p1
 p2
 p2 + p1
+
+
+# MODEL FITS - WEIGHTED ====
+
+
+# Weighted move baserates (slope -.1)
+dyad_data = count_moves_w(dyad_data, exp_slope = -.1)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_moves_weighted_min = fit_model_to_subjects(dyad_data)
+fit_summary_moves_weighted_min = fit_summary_moves_weighted_min %>% mutate(model = "weighted move baserate (-0.1)")
+
+
+
+# Weighted move baserates (slope -.25)
+dyad_data = count_moves_w(dyad_data, exp_slope = -.25)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_moves_weighted_dec = fit_model_to_subjects(dyad_data)
+fit_summary_moves_weighted_dec = fit_summary_moves_weighted_dec %>% mutate(model = "weighted move baserate (-0.25)")
+
+
+
+# Weighted move baserates (slope -1)
+dyad_data = count_moves_w(dyad_data, exp_slope = -1) # Count each player's move choices (*WEIGHTED*)
+# TODO is the below step necessary? Chose .01 because increasing all counts by too much each round adds noise to (small) moving window
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01) # Increase all weighted move counts by .01 to avoid counts of 0
+dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
+# All subsequent code identical to above
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_moves_weighted_low = fit_model_to_subjects(dyad_data)
+fit_summary_moves_weighted_low = fit_summary_moves_weighted_low %>% mutate(model = "weighted move baserate (-1)")
+
+
+# Weighted move baserates (slope -2)
+dyad_data = count_moves_w(dyad_data, exp_slope = -2)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_moves_weighted_med = fit_model_to_subjects(dyad_data)
+fit_summary_moves_weighted_med = fit_summary_moves_weighted_med %>% mutate(model = "weighted move baserate (-2)")
+
+
+# Weighted move baserates (slope -3)
+dyad_data = count_moves_w(dyad_data, exp_slope = -3)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_moves_weighted_high = fit_model_to_subjects(dyad_data)
+fit_summary_moves_weighted_high = fit_summary_moves_weighted_high %>% mutate(model = "weighted move baserate (-3)")
+
+
+
+
+# MODEL ANALYSIS - WEIGHTED ====
+
+fit_summary_weighted = rbind(fit_summary_moves,
+                             fit_summary_moves_weighted_min,
+                             fit_summary_moves_weighted_dec,
+                             fit_summary_moves_weighted_low,
+                             fit_summary_moves_weighted_med,
+                             fit_summary_moves_weighted_high
+                             )
+# Set order of conditions
+fit_summary_weighted$model = factor(fit_summary_weighted$model,
+                                    levels = c("move baserate",
+                                               "weighted move baserate (-0.1)",
+                                               "weighted move baserate (-0.25)",
+                                               "weighted move baserate (-1)",
+                                               "weighted move baserate (-2)",
+                                               "weighted move baserate (-3)"
+                                               )
+                                    )
+# Format for figure
+fit_summary_weighted$model_str = str_wrap(fit_summary_weighted$model, 20)
+
+
+# View softmax param fits
+fit_summary_weighted %>% group_by(model) %>% summarize(mean(softmax))
+# Summary plot
+p1 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = softmax, color = model)) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+  )
+# Individual plot
+p2 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = softmax, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  labs(y = "Softmax parameter estimates") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
+
+p1
+p2
+p2 + p1
+# if predictors are uniform, softmax doesn't matter so much (should be around 0; try setting a prior?)
+
+
+# View LL vals
+fit_summary_weighted %>% group_by(model) %>% summarize(mean(ll_per_round))
+# Summary plot
+p1 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
+  # geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
+  # geom_point(stat="summary", fun="mean", size = 5) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+  )
+# Individual plot
+p2 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  labs(y = "Negative log likelihood (per round)") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
+
+p1
+p2
+p2 + p1
+
+
+
+
+

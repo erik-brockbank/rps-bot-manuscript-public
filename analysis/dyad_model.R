@@ -223,7 +223,7 @@ calculate_move_probs_move_count = function(data, probability_prior) {
 # The function takes in each player's rows, does a rowwise calculation to get the
 # weighted count of rock, paper, and scissors subject to `exp_slope` exponential weighting
 count_moves_w = function(data, exp_slope) {
-  data = data %>%
+  data %>%
     split(data$player_id) %>%
     map_dfr(
       function(dat) {
@@ -366,6 +366,106 @@ calculate_move_probs_transition = function(data, probability_prior, transition_l
     )
   return(data)
 }
+
+
+# WEIGHTED TRANSITION FUNCTIONS
+
+# Count *weighted* cumulative number of transitions by each player
+count_transitions_w = function(data, exp_slope) {
+  data %>%
+    split(data$player_id) %>%
+    map_dfr(
+      function(dat) {
+        dat %>%
+          rowwise() %>%
+          mutate(
+            # transitions = list(.$transition[1:round_index]), # NB: debugging to confirm that transition sequence is captured
+            count_transition_up_w = sum(
+              # In each row, fetch player transitions from 1:round index, reverse them
+              # to weight most recent transitions highest, get all previous rows where transition = "up",
+              # apply exponential weight to those rows (1:round_index)^-1, then sum
+              (rev(.$transition[1:round_index]) == "up") * (seq_len(round_index)^exp_slope)
+            ),
+            count_transition_down_w = sum((rev(.$transition[1:round_index]) == "down") * (seq_len(round_index)^exp_slope)),
+            count_transition_stay_w = sum((rev(.$transition[1:round_index]) == "stay") * (seq_len(round_index)^exp_slope))
+          )
+      }
+    )
+}
+
+
+# Increase all weighted transition counts by `count_prior`
+# NB: this seems different from applying a prior because counts are not cumulative here
+# This *shifts* all transition counts; is this necessary?
+apply_transition_count_w_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(count_transition_up_w = count_transition_up_w + count_prior,
+           count_transition_down_w = count_transition_down_w + count_prior,
+           count_transition_stay_w = count_transition_stay_w + count_prior)
+}
+
+
+# Calculate move probability on a given round based on *weighted* transition counts from previous round
+# NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
+calculate_move_probs_transition_w = function(data, probability_prior, transition_lookup) {
+  # Calculate totals for probability conversion
+  data = data %>%
+    rowwise() %>%
+    mutate(count_total_transitions_w = sum(count_transition_up_w, count_transition_down_w, count_transition_stay_w))
+  # Add probability of each weighted transition based on counts from previous round
+  data = data %>%
+    group_by(player_id) %>%
+    mutate(
+      prob_transition_up_w = ifelse(is.na(lag(count_total_transitions_w, 1)), probability_prior,
+                                    lag(count_transition_up_w, 1) / lag(count_total_transitions_w, 1)),
+      prob_transition_down_w = ifelse(is.na(lag(count_total_transitions_w, 1)), probability_prior,
+                                      lag(count_transition_down_w, 1) / lag(count_total_transitions_w, 1)),
+      prob_transition_stay_w = ifelse(is.na(lag(count_total_transitions_w, 1)), probability_prior,
+                                      lag(count_transition_stay_w, 1) / lag(count_total_transitions_w, 1))
+    )
+  # Calculate move probability
+  data = data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      # Rock probability is either prior or weighted transition probability *as of previous round* for
+      # transition indicated by previous round's move -> "rock"
+      prob_rock = ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                         # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                         probability_prior,
+                         # Else, probability of rock is appropriate weighted transition probability from above for previous move -> "rock"
+                         case_when(
+                           transition_lookup[player_prev_move, "rock"] == "up" ~ prob_transition_up_w,
+                           transition_lookup[player_prev_move, "rock"] == "down" ~ prob_transition_down_w,
+                           transition_lookup[player_prev_move, "rock"] == "stay" ~ prob_transition_stay_w,
+                           TRUE ~ probability_prior # NB: this should never be activated
+                         )
+      ),
+      prob_paper = ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                          probability_prior,
+                          case_when(
+                            transition_lookup[player_prev_move, "paper"] == "up" ~ prob_transition_up_w,
+                            transition_lookup[player_prev_move, "paper"] == "down" ~ prob_transition_down_w,
+                            transition_lookup[player_prev_move, "paper"] == "stay" ~ prob_transition_stay_w,
+                            TRUE ~ probability_prior # NB: this should never be activated
+                          )
+      ),
+      prob_scissors = ifelse(is.na(player_prev_move) | player_prev_move == "none",
+                             probability_prior,
+                             case_when(
+                               transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_transition_up_w,
+                               transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_transition_down_w,
+                               transition_lookup[player_prev_move, "scissors"] == "stay" ~ prob_transition_stay_w,
+                               TRUE ~ probability_prior # NB: this should never be activated
+                             )
+      )
+
+    )
+  return(data)
+}
+
 
 
 
@@ -1059,7 +1159,7 @@ brutefit = function(tmp) {
 
 
 
-fit_model_to_subjects = function(data) {
+fit_model_to_subjects = function(data, model) {
   # Dataframe for storing model fits
   fit_summary = data.frame(
     "subject" = character(),
@@ -1078,7 +1178,7 @@ fit_model_to_subjects = function(data) {
     fit_summary = rbind(fit_summary,
                         data.frame(
                           "subject" = fit["subject"],
-                          model = "move_baserates",
+                          model = model,
                           "logL" = fit["logL"],
                           "n" = fit["n"],
                           "softmax" = fit["softmax"]))
@@ -1145,8 +1245,7 @@ dyad_data = apply_move_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior"
 dyad_data = calculate_move_probs_move_count(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities based on counts from previous round
 dyad_data = calculate_opponent_move_probs(dyad_data) # Calculate opponent's probability of rock, paper, scissors on a given round
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS) # Calculate EV of each move (and chosen move) based on opponent move probabilities
-fit_summary_moves = fit_model_to_subjects(dyad_data) # Fit model
-fit_summary_moves = fit_summary_moves %>% mutate(model = "move baserate")
+fit_summary_moves = fit_model_to_subjects(dyad_data, model = "move baserate") # Fit model
 
 
 # Self-transition model
@@ -1156,8 +1255,7 @@ dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
 dyad_data = calculate_move_probs_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_transitions = fit_model_to_subjects(dyad_data)
-fit_summary_transitions = fit_summary_transitions %>% mutate(model = "transition baserate")
+fit_summary_transitions = fit_model_to_subjects(dyad_data, model = "transition baserate")
 
 
 # Opponent-transition model
@@ -1167,8 +1265,7 @@ dyad_data = apply_opponent_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
 dyad_data = calculate_move_probs_opponent_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_opponent_transitions = fit_model_to_subjects(dyad_data)
-fit_summary_opponent_transitions = fit_summary_opponent_transitions %>% mutate(model = "opponent transition baserate")
+fit_summary_opponent_transitions = fit_model_to_subjects(dyad_data, model = "opponent transition baserate")
 
 
 
@@ -1182,8 +1279,7 @@ dyad_data = apply_prev_move_current_move_count_prior(dyad_data, EVENT_COUNT_PRIO
 dyad_data = calculate_move_probs_move_prev_move(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_move_prev_move = fit_model_to_subjects(dyad_data)
-fit_summary_move_prev_move = fit_summary_move_prev_move %>% mutate(model = "move given previous move")
+fit_summary_move_prev_move = fit_model_to_subjects(dyad_data, model = "move given previous move")
 
 
 # Move given opponent prior move model
@@ -1196,8 +1292,7 @@ dyad_data = apply_opponent_prev_move_current_move_count_prior(dyad_data, EVENT_C
 dyad_data = calculate_move_probs_opponent_move_prev_move(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_opponent_move_prev_move = fit_model_to_subjects(dyad_data)
-fit_summary_opponent_move_prev_move = fit_summary_opponent_move_prev_move %>% mutate(model = "move given opponent previous move")
+fit_summary_opponent_move_prev_move = fit_model_to_subjects(dyad_data, model = "move given opponent previous move")
 
 
 # Outcome-transition model
@@ -1210,8 +1305,7 @@ dyad_data = apply_outcome_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
 dyad_data = calculate_move_probs_outcome_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_outcome_transition = fit_model_to_subjects(dyad_data)
-fit_summary_outcome_transition = fit_summary_outcome_transition %>% mutate(model = "outcome given previous transition")
+fit_summary_outcome_transition = fit_model_to_subjects(dyad_data, model = "outcome given previous transition")
 
 
 
@@ -1321,7 +1415,7 @@ p2
 p2 + p1
 
 
-# MODEL FITS - WEIGHTED ====
+# MODEL FITS - WEIGHTED MOVE BASERATES ====
 
 
 # Weighted move baserates (slope -.1)
@@ -1330,8 +1424,7 @@ dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_moves_weighted_min = fit_model_to_subjects(dyad_data)
-fit_summary_moves_weighted_min = fit_summary_moves_weighted_min %>% mutate(model = "weighted move baserate (-0.1)")
+fit_summary_moves_weighted_min = fit_model_to_subjects(dyad_data, model = "weighted move baserate (-0.1)")
 
 
 
@@ -1341,8 +1434,7 @@ dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_moves_weighted_dec = fit_model_to_subjects(dyad_data)
-fit_summary_moves_weighted_dec = fit_summary_moves_weighted_dec %>% mutate(model = "weighted move baserate (-0.25)")
+fit_summary_moves_weighted_dec = fit_model_to_subjects(dyad_data, model = "weighted move baserate (-0.25)")
 
 
 
@@ -1354,8 +1446,7 @@ dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 # All subsequent code identical to above
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_moves_weighted_low = fit_model_to_subjects(dyad_data)
-fit_summary_moves_weighted_low = fit_summary_moves_weighted_low %>% mutate(model = "weighted move baserate (-1)")
+fit_summary_moves_weighted_low = fit_model_to_subjects(dyad_data, model = "weighted move baserate (-1)")
 
 
 # Weighted move baserates (slope -2)
@@ -1364,8 +1455,7 @@ dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_moves_weighted_med = fit_model_to_subjects(dyad_data)
-fit_summary_moves_weighted_med = fit_summary_moves_weighted_med %>% mutate(model = "weighted move baserate (-2)")
+fit_summary_moves_weighted_med = fit_model_to_subjects(dyad_data, model = "weighted move baserate (-2)")
 
 
 # Weighted move baserates (slope -3)
@@ -1374,13 +1464,12 @@ dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_moves_weighted_high = fit_model_to_subjects(dyad_data)
-fit_summary_moves_weighted_high = fit_summary_moves_weighted_high %>% mutate(model = "weighted move baserate (-3)")
+fit_summary_moves_weighted_high = fit_model_to_subjects(dyad_data, model = "weighted move baserate (-3)")
 
 
 
 
-# MODEL ANALYSIS - WEIGHTED ====
+# MODEL ANALYSIS - WEIGHTED MOVE BASERATES ====
 
 fit_summary_weighted = rbind(fit_summary_moves,
                              fit_summary_moves_weighted_min,
@@ -1442,6 +1531,163 @@ p1
 p2
 p2 + p1
 # if predictors are uniform, softmax doesn't matter so much (should be around 0; try setting a prior?)
+
+
+# View LL vals
+fit_summary_weighted %>% group_by(model) %>% summarize(mean(ll_per_round))
+# Summary plot
+p1 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
+  # geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
+  # geom_point(stat="summary", fun="mean", size = 5) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+  )
+# Individual plot
+p2 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  labs(y = "Negative log likelihood (per round)") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
+
+p1
+p2
+p2 + p1
+
+
+
+# MODEL FITS - WEIGHTED TRANSITIONS ====
+
+# Weighted transitions (slope -0.1)
+dyad_data = count_transitions_w(dyad_data, exp_slope = -0.1)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_transitions_weighted_min = fit_model_to_subjects(dyad_data, model = "weighted transition baserate (-0.1)")
+
+
+# Weighted transitions (slope -0.25)
+dyad_data = count_transitions_w(dyad_data, exp_slope = -0.25)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_transitions_weighted_dec = fit_model_to_subjects(dyad_data, model = "weighted transition baserate (-0.25)")
+
+
+
+# Weighted transitions (slope -1)
+dyad_data = count_transitions_w(dyad_data, exp_slope = -1)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_transitions_weighted_low = fit_model_to_subjects(dyad_data, model = "weighted transition baserate (-1)")
+
+
+# Weighted transitions (slope -2)
+dyad_data = count_transitions_w(dyad_data, exp_slope = -2)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_transitions_weighted_med = fit_model_to_subjects(dyad_data, model = "weighted transition baserate (-2)")
+
+# Weighted transitions (slope -3)
+dyad_data = count_transitions_w(dyad_data, exp_slope = -3)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_transitions_weighted_high = fit_model_to_subjects(dyad_data, model = "weighted transition baserate (-3)")
+
+
+# MODEL ANALYSIS - WEIGHTED TRANSITIONS ====
+
+fit_summary_weighted = rbind(
+  fit_summary_transitions,
+  fit_summary_transitions_weighted_min,
+  fit_summary_transitions_weighted_dec,
+  fit_summary_transitions_weighted_low,
+  fit_summary_transitions_weighted_med,
+  fit_summary_transitions_weighted_high
+)
+# Set order of conditions
+fit_summary_weighted$model = factor(fit_summary_weighted$model,
+                                    levels = c("transition baserate",
+                                               "weighted transition baserate (-0.1)",
+                                               "weighted transition baserate (-0.25)",
+                                               "weighted transition baserate (-1)",
+                                               "weighted transition baserate (-2)",
+                                               "weighted transition baserate (-3)"
+                                    )
+)
+# Format for figure
+fit_summary_weighted$model_str = str_wrap(fit_summary_weighted$model, 20)
+
+
+# View softmax param fits
+fit_summary_weighted %>% group_by(model) %>% summarize(mean(softmax))
+
+# Summary plot
+p1 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = softmax, color = model)) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+  )
+# Individual plot
+p2 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = softmax, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  labs(y = "Softmax parameter estimates") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
+
+p1
+p2
+p2 + p1
+# if predictors are uniform, softmax doesn't matter so much (should be around 0; try setting a prior?)
+
 
 
 # View LL vals

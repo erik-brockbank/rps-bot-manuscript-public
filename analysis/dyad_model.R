@@ -221,8 +221,8 @@ calculate_move_probs_move_count = function(data, probability_prior) {
 # Then re-combines using map_dfr, which applies the function below to each element in the list,
 # then aggregates list items into a single dataframe.
 # The function takes in each player's rows, does a rowwise calculation to get the
-# weighted count of rock, paper, and scissors subject to `exp_slope` exponential weighting
-count_moves_w = function(data, exp_slope) {
+# weighted count of rock, paper, and scissors subject to `pwr_slope` power law weighting
+count_moves_w = function(data, pwr_slope) {
   data %>%
     split(data$player_id) %>%
     map_dfr(
@@ -235,10 +235,10 @@ count_moves_w = function(data, exp_slope) {
               # In each row, fetch player moves from 1:round index, reverse them
               # to weight most recent moves highest, get all previous rows where move = "rock",
               # apply exponential weight to those rows (1:round_index)^-1, then sum
-              (rev(.$player_move[1:round_index]) == "rock") * (seq_len(round_index)^exp_slope)
+              (rev(.$player_move[1:round_index]) == "rock") * (seq_len(round_index)^pwr_slope)
             ),
-            count_paper_w = sum((rev(.$player_move[1:round_index]) == "paper") * (seq_len(round_index)^exp_slope)),
-            count_scissors_w = sum((rev(.$player_move[1:round_index]) == "scissors") * (seq_len(round_index)^exp_slope))
+            count_paper_w = sum((rev(.$player_move[1:round_index]) == "paper") * (seq_len(round_index)^pwr_slope)),
+            count_scissors_w = sum((rev(.$player_move[1:round_index]) == "scissors") * (seq_len(round_index)^pwr_slope))
           )
       }
     )
@@ -371,7 +371,7 @@ calculate_move_probs_transition = function(data, probability_prior, transition_l
 # WEIGHTED TRANSITION FUNCTIONS
 
 # Count *weighted* cumulative number of transitions by each player
-count_transitions_w = function(data, exp_slope) {
+count_transitions_w = function(data, pwr_slope) {
   data %>%
     split(data$player_id) %>%
     map_dfr(
@@ -384,10 +384,10 @@ count_transitions_w = function(data, exp_slope) {
               # In each row, fetch player transitions from 1:round index, reverse them
               # to weight most recent transitions highest, get all previous rows where transition = "up",
               # apply exponential weight to those rows (1:round_index)^-1, then sum
-              (rev(.$transition[1:round_index]) == "up") * (seq_len(round_index)^exp_slope)
+              (rev(.$transition[1:round_index]) == "up") * (seq_len(round_index)^pwr_slope)
             ),
-            count_transition_down_w = sum((rev(.$transition[1:round_index]) == "down") * (seq_len(round_index)^exp_slope)),
-            count_transition_stay_w = sum((rev(.$transition[1:round_index]) == "stay") * (seq_len(round_index)^exp_slope))
+            count_transition_down_w = sum((rev(.$transition[1:round_index]) == "down") * (seq_len(round_index)^pwr_slope)),
+            count_transition_stay_w = sum((rev(.$transition[1:round_index]) == "stay") * (seq_len(round_index)^pwr_slope))
           )
       }
     )
@@ -1241,7 +1241,7 @@ dyad_data = add_outcome_transition(dyad_data) # combination of previous outcome,
 
 # Validate model with move baserates
 dyad_data = count_moves(dyad_data) # Count each player's move choices (cumulative)
-dyad_data = apply_move_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
+dyad_data = apply_move_count_prior(dyad_data, 3) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
 dyad_data = calculate_move_probs_move_count(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities based on counts from previous round
 dyad_data = calculate_opponent_move_probs(dyad_data) # Calculate opponent's probability of rock, paper, scissors on a given round
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS) # Calculate EV of each move (and chosen move) based on opponent move probabilities
@@ -1250,7 +1250,7 @@ fit_summary_moves = fit_model_to_subjects(dyad_data, model = "move baserate") # 
 
 # Self-transition model
 dyad_data = count_transitions(dyad_data)
-dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
+dyad_data = apply_transition_count_prior(dyad_data, 3)
 # NB: the line below is the only part of the model fit that differs from the previous model
 dyad_data = calculate_move_probs_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
@@ -1419,8 +1419,8 @@ p2 + p1
 
 
 # Weighted move baserates (slope -.1)
-dyad_data = count_moves_w(dyad_data, exp_slope = -.1)
-dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_moves_w(dyad_data, pwr_slope = -.1)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
@@ -1429,8 +1429,8 @@ fit_summary_moves_weighted_min = fit_model_to_subjects(dyad_data, model = "weigh
 
 
 # Weighted move baserates (slope -.25)
-dyad_data = count_moves_w(dyad_data, exp_slope = -.25)
-dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_moves_w(dyad_data, pwr_slope = -.25)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
@@ -1439,9 +1439,8 @@ fit_summary_moves_weighted_dec = fit_model_to_subjects(dyad_data, model = "weigh
 
 
 # Weighted move baserates (slope -1)
-dyad_data = count_moves_w(dyad_data, exp_slope = -1) # Count each player's move choices (*WEIGHTED*)
-# TODO is the below step necessary? Chose .01 because increasing all counts by too much each round adds noise to (small) moving window
-dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01) # Increase all weighted move counts by .01 to avoid counts of 0
+dyad_data = count_moves_w(dyad_data, pwr_slope = -1) # Count each player's move choices (*WEIGHTED*)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 3) # Increase all weighted move counts by .01 to avoid counts of 0
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 # All subsequent code identical to above
 dyad_data = calculate_opponent_move_probs(dyad_data)
@@ -1450,8 +1449,8 @@ fit_summary_moves_weighted_low = fit_model_to_subjects(dyad_data, model = "weigh
 
 
 # Weighted move baserates (slope -2)
-dyad_data = count_moves_w(dyad_data, exp_slope = -2)
-dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_moves_w(dyad_data, pwr_slope = -2)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
@@ -1459,8 +1458,8 @@ fit_summary_moves_weighted_med = fit_model_to_subjects(dyad_data, model = "weigh
 
 
 # Weighted move baserates (slope -3)
-dyad_data = count_moves_w(dyad_data, exp_slope = -3)
-dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_moves_w(dyad_data, pwr_slope = -3)
+dyad_data = apply_move_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
@@ -1579,8 +1578,8 @@ p2 + p1
 # MODEL FITS - WEIGHTED TRANSITIONS ====
 
 # Weighted transitions (slope -0.1)
-dyad_data = count_transitions_w(dyad_data, exp_slope = -0.1)
-dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_transitions_w(dyad_data, pwr_slope = -0.1)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
@@ -1588,8 +1587,8 @@ fit_summary_transitions_weighted_min = fit_model_to_subjects(dyad_data, model = 
 
 
 # Weighted transitions (slope -0.25)
-dyad_data = count_transitions_w(dyad_data, exp_slope = -0.25)
-dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_transitions_w(dyad_data, pwr_slope = -0.25)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
@@ -1598,8 +1597,8 @@ fit_summary_transitions_weighted_dec = fit_model_to_subjects(dyad_data, model = 
 
 
 # Weighted transitions (slope -1)
-dyad_data = count_transitions_w(dyad_data, exp_slope = -1)
-dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_transitions_w(dyad_data, pwr_slope = -1)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
@@ -1607,16 +1606,16 @@ fit_summary_transitions_weighted_low = fit_model_to_subjects(dyad_data, model = 
 
 
 # Weighted transitions (slope -2)
-dyad_data = count_transitions_w(dyad_data, exp_slope = -2)
-dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_transitions_w(dyad_data, pwr_slope = -2)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
 fit_summary_transitions_weighted_med = fit_model_to_subjects(dyad_data, model = "weighted transition baserate (-2)")
 
 # Weighted transitions (slope -3)
-dyad_data = count_transitions_w(dyad_data, exp_slope = -3)
-dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 0.01)
+dyad_data = count_transitions_w(dyad_data, pwr_slope = -3)
+dyad_data = apply_transition_count_w_prior(dyad_data, count_prior = 3)
 dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)

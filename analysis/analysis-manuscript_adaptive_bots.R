@@ -39,7 +39,7 @@ STRATEGY_LEVELS = c(
 
 STRATEGY_LOOKUP = list(
   # "opponent_moves" = "Move distribution",
-  "opponent_prev_move" = "Choice given player's prior move choice",
+  "opponent_prev_move" = "Choice given player's prior choice",
   "bot_prev_move" = "Choice given opponent's prior choice",
   "opponent_bot_prev_move" = "Choice given player's prior choice & opponent's prior choice",
   "opponent_prev_two_moves" = "Choice given player's prior two choices",
@@ -51,14 +51,14 @@ STRATEGY_LOOKUP = list(
 )
 
 COMPLEXITY_LOOKUP = c(
-  "opponent_transitions" = "3 cell memory",
-  "opponent_courn_transitions" = "3 cell memory",
-  "opponent_prev_move" = "9 cell memory",
-  "bot_prev_move" = "9 cell memory",
-  "opponent_outcome_transitions" = "9 cell memory",
-  "opponent_bot_prev_move" = "27 cell memory",
-  "opponent_prev_two_moves" = "27 cell memory",
-  "opponent_outcome_prev_transition_dual" = "27 cell memory"
+  "opponent_transitions" = "3-cell memory",
+  "opponent_courn_transitions" = "3-cell memory",
+  "opponent_prev_move" = "9-cell memory",
+  "bot_prev_move" = "9-cell memory",
+  "opponent_outcome_transitions" = "9-cell memory",
+  "opponent_bot_prev_move" = "27-cell memory",
+  "opponent_prev_two_moves" = "27-cell memory",
+  "opponent_outcome_prev_transition_dual" = "27-cell memory"
 )
 
 # NB: this is player move in rows, opponent move in columns
@@ -288,7 +288,7 @@ wcd_all = wcd_all %>%
   rowwise() %>%
   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
 wcd_all$complexity = factor(wcd_all$complexity,
-                            levels = c("3 cell memory", "9 cell memory", "27 cell memory"))
+                            levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
 
 
 # How did bot WCD values compare to chance?
@@ -321,7 +321,7 @@ wcd_summary = wcd_summary %>%
   rowwise() %>%
   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
 wcd_summary$complexity = factor(wcd_summary$complexity,
-                                levels = c("3 cell memory", "9 cell memory", "27 cell memory"))
+                                levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
 
 
 wcd_summary %>%

@@ -7,7 +7,7 @@
 # SETUP ====
 
 rm(list = ls())
-setwd("/Users/erikbrockbank/web/vullab/rps/analysis")
+setwd("/Users/erikbrockbank/web/vullab/rps-bot-manuscript-public/analysis")
 
 library(tidyverse)
 library(viridis)
@@ -17,7 +17,9 @@ library(pwr)
 
 # GLOBALS ====
 
+DATA_PATH = "../data" # pathway to data file
 DATA_FILE = "rps_v3_data.csv" # name of file containing full dataset for all rounds
+IMG_PATH = "../figures" # pathway to "figures" folder
 GAME_ROUNDS = 300 # number of rounds in each complete game
 
 # In order of complexity
@@ -144,7 +146,7 @@ STRATEGY_LABELS = c("opponent_moves" = str_wrap(STRATEGY_LOOKUP[["opponent_moves
 
 # INITIALIZATION ====
 # TODO move much of this into read data function
-data = read_csv(DATA_FILE)
+data = read_csv(paste(DATA_PATH, DATA_FILE, sep = "/"))
 data$bot_strategy = factor(data$bot_strategy, levels = STRATEGY_LEVELS)
 
 # Remove all incomplete games
@@ -355,7 +357,7 @@ wcd_summary %>%
 
 
 ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
-       path = "img", # TODO fix file path
+       path = IMG_PATH,
        device = "png",
        units = "in",
        width = 8.5,
@@ -538,7 +540,7 @@ p1 = transition_ig_summary %>%
     axis.text.y = element_text(size = 14, face = "bold"),
     legend.position = "none"
   )
-# TODO save plot
+
 
 
 
@@ -565,13 +567,13 @@ p2 = cournot_transition_ig_summary %>%
     axis.text.y = element_text(size = 14, face = "bold"),
     legend.position = "none"
   )
-# TODO save plot
+
 
 p3 = p1 / p2
 p3
 
 ggsave(filename = "v3_adaptive_bot_response_summary.png",
-       path = "img", # TODO fix file path
+       path = IMG_PATH,
        device = "png",
        units = "in",
        width = 9,
@@ -581,183 +583,431 @@ ggsave(filename = "v3_adaptive_bot_response_summary.png",
 
 
 
-# ANALYSIS: Simulate transition biases against transition bots ====
+# ANALYSIS: Simulate self-transition biases against opponent-transition bots ====
 
-# TODO clean this up and make functions like an adult...
+# TODO clean this up and make actual functions like an adult...
 
-N_SUBJECTS = 10
+N_SUBJECTS = 100
 N_ROUNDS = 300
 MOVES = c(1, 2, 3)
 MOVES_STR = c("rock", "paper", "scissors")
 TRANSITIONS = c(-1, 0, 1)
 TRANSITIONS_STR = c("down", "stay", "up")
-TRANSITION_BIAS = -1 # values: -1, 0, 1
+
 
 simulation_df = data.frame()
 
-for(subj in seq(N_SUBJECTS)) {
-  print(paste("BEGINNING SIMULATION FOR SUBJECT: ", subj))
-  # Initialize subject df
-  df_self_transition = data.frame(
-    "subj" = numeric(),
-    "round" = numeric(),
-    "subj_move" = numeric(),
-    "subj_move_str" = character(),
-    "subj_cournot_trans" = numeric(),
-    # Note these counts are inclusive of the current round, so decisions need to be made based on counts from previous round
-    "subj_total_cournot_down" = numeric(),
-    "subj_total_cournot_stay" = numeric(),
-    "subj_total_cournot_up" = numeric(),
-    # Note these probabilities are up to the previous round so don't align with counts in same row
-    "subj_prob_cournot_down" = numeric(),
-    "subj_prob_cournot_stay" = numeric(),
-    "subj_prob_cournot_up" = numeric(),
-    "bot_predicted_subj_cournot_trans" = numeric(),
-    "bot_predicted_subj_move" = numeric(),
-    "bot_move" = numeric(),
-    "bot_move_str" = character()
-  )
+# NB: takes ~60s per bias
+for(transition_bias in TRANSITIONS) {
+  for(subj in seq(N_SUBJECTS)) {
+    print(paste("BEGINNING SIMULATION FOR SUBJECT: ", subj, ", BIAS: ", transition_bias))
+    # Initialize subject df
+    df_self_transition = data.frame(
+      "subj" = numeric(),
+      "subj_transition_bias" = numeric(),
+      "subj_transition_bias_str" = character(),
+      "round" = numeric(),
+      "subj_move" = numeric(),
+      "subj_move_str" = character(),
+      "subj_cournot_trans" = numeric(),
+      # Note these counts are inclusive of the current round, so decisions need to be made based on counts from previous round
+      "subj_total_cournot_down" = numeric(),
+      "subj_total_cournot_stay" = numeric(),
+      "subj_total_cournot_up" = numeric(),
+      # Note these probabilities are up to the previous round so don't align with counts in same row
+      "subj_prob_cournot_down" = numeric(),
+      "subj_prob_cournot_stay" = numeric(),
+      "subj_prob_cournot_up" = numeric(),
+      "bot_predicted_subj_cournot_trans" = numeric(),
+      "bot_predicted_subj_move" = numeric(),
+      "bot_move" = numeric(),
+      "bot_move_str" = character()
+    )
 
-  # Add moves for an individual subject's simulation, round by round!
-  for(round in seq(N_ROUNDS)) {
-    if(round == 1) {
-      subj_move = sample(MOVES, 1)
-      subj_cournot_trans = NA
-      subj_total_cournot_down = 0
-      subj_total_cournot_stay = 0
-      subj_total_cournot_up = 0
-      subj_prob_cournot_down = 0
-      subj_prob_cournot_stay = 0
-      subj_prob_cournot_up = 0
+    # Add moves for an individual subject's simulation, round by round!
+    for(round in seq(N_ROUNDS)) {
+      if(round == 1) {
+        subj_move = sample(MOVES, 1)
+        subj_cournot_trans = NA
+        subj_total_cournot_down = 0
+        subj_total_cournot_stay = 0
+        subj_total_cournot_up = 0
+        subj_prob_cournot_down = 0
+        subj_prob_cournot_stay = 0
+        subj_prob_cournot_up = 0
 
-      # Choose bot move
-      bot_predicted_subj_cournot_trans = NA
-      bot_predicted_subj_move = NA
-      bot_move = sample(MOVES, 1)
-    } else {
-      # Code using mod logic below is code from Ed, very snazzy
-      subj_move = ((df_self_transition$subj_move[round-1] + TRANSITION_BIAS - 1) %% 3) + 1
-      bot_prev_move = df_self_transition$bot_move[round-1]
-      subj_cournot_trans = ifelse(
-        (subj_move - bot_prev_move) %% 3 == 2,
-        -1,
-        (subj_move - bot_prev_move) %% 3
-      )
-
-      subj_total_cournot_down = df_self_transition$subj_total_cournot_down[round-1] + (subj_cournot_trans == -1)
-      subj_total_cournot_stay = df_self_transition$subj_total_cournot_stay[round-1] + (subj_cournot_trans == 0)
-      subj_total_cournot_up = df_self_transition$subj_total_cournot_up[round-1] + (subj_cournot_trans == 1)
-
-      total_transitions = max(sum(df_self_transition$subj_total_cournot_down[round-1], # max avoids division by 0 below
-                                  df_self_transition$subj_total_cournot_stay[round-1],
-                                  df_self_transition$subj_total_cournot_up[round-1]), 0.001)
-      subj_prob_cournot_down = df_self_transition$subj_total_cournot_down[round-1] / total_transitions
-      subj_prob_cournot_stay = df_self_transition$subj_total_cournot_stay[round-1] / total_transitions
-      subj_prob_cournot_up = df_self_transition$subj_total_cournot_up[round-1] / total_transitions
-
-      # Identify most likely human cournot transitions, break tie if needed
-      bot_predicted_subj_cournot_trans = NA
-      cournot_probs = c(subj_prob_cournot_down, subj_prob_cournot_stay, subj_prob_cournot_up)
-      max_prob_cournot = which(cournot_probs == max(cournot_probs)) # Which of the above is max? (includes ties)
-      # Single max: predicted transition is index of max in TRANSITIONS
-      if(length(max_prob_cournot) == 1) {
-        bot_predicted_subj_cournot_trans = TRANSITIONS[max_prob_cournot]
-        # print(paste("1 max: ", round, ": ", max_prob_cournot, "choice: ", bot_predicted_subj_cournot_trans))
-      }
-      # All tied: sample randomly
-      if(length(max_prob_cournot) == 3) {
-        bot_predicted_subj_cournot_trans = sample(TRANSITIONS, 1)
-        # print(paste("3-way tie: ", round, "choice: ", bot_predicted_subj_cournot_trans))
-      }
-      # 2-way tie. Determine which elements are tied based on sum of `max_prob_cournot`,
-      # then sample transition from among relevant tied transitions
-      if(length(max_prob_cournot) == 2) {
-        ties = sum(max_prob_cournot)
-        bot_predicted_subj_cournot_trans = case_when(
-          ties == 3 ~ sample(c(TRANSITIONS[1], TRANSITIONS[2]), 1),
-          ties == 4 ~ sample(c(TRANSITIONS[1], TRANSITIONS[3]), 1),
-          ties == 5 ~ sample(c(TRANSITIONS[2], TRANSITIONS[3]), 1)
+        # Choose bot move
+        bot_predicted_subj_cournot_trans = NA
+        bot_predicted_subj_move = NA
+        bot_move = sample(MOVES, 1)
+      } else {
+        # Code using mod logic below is code from Ed, very snazzy
+        subj_move = ((df_self_transition$subj_move[round-1] + transition_bias - 1) %% 3) + 1
+        bot_prev_move = df_self_transition$bot_move[round-1]
+        subj_cournot_trans = ifelse(
+          (subj_move - bot_prev_move) %% 3 == 2,
+          -1,
+          (subj_move - bot_prev_move) %% 3
         )
-        # print(paste("2-way tie: ", round, "choice: ", bot_predicted_subj_cournot_trans))
-        # print(max_prob_cournot)
+
+        subj_total_cournot_down = df_self_transition$subj_total_cournot_down[round-1] + (subj_cournot_trans == -1)
+        subj_total_cournot_stay = df_self_transition$subj_total_cournot_stay[round-1] + (subj_cournot_trans == 0)
+        subj_total_cournot_up = df_self_transition$subj_total_cournot_up[round-1] + (subj_cournot_trans == 1)
+
+        total_transitions = max(sum(df_self_transition$subj_total_cournot_down[round-1], # max avoids division by 0 below
+                                    df_self_transition$subj_total_cournot_stay[round-1],
+                                    df_self_transition$subj_total_cournot_up[round-1]), 0.001)
+        subj_prob_cournot_down = df_self_transition$subj_total_cournot_down[round-1] / total_transitions
+        subj_prob_cournot_stay = df_self_transition$subj_total_cournot_stay[round-1] / total_transitions
+        subj_prob_cournot_up = df_self_transition$subj_total_cournot_up[round-1] / total_transitions
+
+        # Identify most likely human cournot transitions, break tie if needed
+        bot_predicted_subj_cournot_trans = NA
+        cournot_probs = c(subj_prob_cournot_down, subj_prob_cournot_stay, subj_prob_cournot_up)
+        max_prob_cournot = which(cournot_probs == max(cournot_probs)) # Which of the above is max? (includes ties)
+        # Single max: predicted transition is index of max in TRANSITIONS
+        if(length(max_prob_cournot) == 1) {
+          bot_predicted_subj_cournot_trans = TRANSITIONS[max_prob_cournot]
+        }
+        # All tied: sample randomly
+        if(length(max_prob_cournot) == 3) {
+          bot_predicted_subj_cournot_trans = sample(TRANSITIONS, 1)
+        }
+        # 2-way tie. Determine which elements are tied based on sum of `max_prob_cournot`,
+        # then sample transition from among relevant tied transitions
+        if(length(max_prob_cournot) == 2) {
+          ties = sum(max_prob_cournot)
+          bot_predicted_subj_cournot_trans = case_when(
+            ties == 3 ~ sample(c(TRANSITIONS[1], TRANSITIONS[2]), 1),
+            ties == 4 ~ sample(c(TRANSITIONS[1], TRANSITIONS[3]), 1),
+            ties == 5 ~ sample(c(TRANSITIONS[2], TRANSITIONS[3]), 1)
+          )
+        }
+        # Choose bot move based on predicted human cournot transition
+        # Code using mod logic below is code from Ed, very snazzy
+        bot_predicted_subj_move = ((bot_predicted_subj_cournot_trans + bot_prev_move - 1) %% 3) + 1
+        bot_move = (bot_predicted_subj_move %% 3) + 1
       }
-      # Choose bot move based on predicted human cournot transition
-      # Code using mod logic below is code from Ed, very snazzy
-      bot_predicted_subj_move = ((bot_predicted_subj_cournot_trans + bot_prev_move - 1) %% 3) + 1
-      bot_move = (bot_predicted_subj_move %% 3) + 1
+
+      # Add move calculations above to dataframe
+      new_row = data.frame(
+        "subj" = subj,
+        "subj_transition_bias" = transition_bias,
+        "subj_transition_bias_str" = TRANSITIONS_STR[which(TRANSITIONS == transition_bias)],
+        "round" = round,
+        "subj_move" = subj_move,
+        "subj_move_str" = MOVES_STR[subj_move],
+        "subj_cournot_trans" = subj_cournot_trans,
+        "subj_total_cournot_down" = subj_total_cournot_down,
+        "subj_total_cournot_stay" = subj_total_cournot_stay,
+        "subj_total_cournot_up" = subj_total_cournot_up,
+        "subj_prob_cournot_down" = subj_prob_cournot_down,
+        "subj_prob_cournot_stay" = subj_prob_cournot_stay,
+        "subj_prob_cournot_up" = subj_prob_cournot_up,
+        "bot_predicted_subj_cournot_trans" = bot_predicted_subj_cournot_trans,
+        "bot_predicted_subj_move" = bot_predicted_subj_move,
+        "bot_move" = bot_move,
+        "bot_move_str" = MOVES_STR[bot_move]
+      )
+      df_self_transition = bind_rows(
+        df_self_transition,
+        new_row
+      )
     }
 
-    # Add move calculations above to dataframe
-    new_row = data.frame(
-      "subj" = subj,
-      "round" = round,
-      "subj_move" = subj_move,
-      "subj_move_str" = MOVES_STR[subj_move],
-      "subj_cournot_trans" = subj_cournot_trans,
-      "subj_total_cournot_up" = subj_total_cournot_up,
-      "subj_total_cournot_down" = subj_total_cournot_down,
-      "subj_total_cournot_stay" = subj_total_cournot_stay,
-      "subj_prob_cournot_up" = subj_prob_cournot_up,
-      "subj_prob_cournot_down" = subj_prob_cournot_down,
-      "subj_prob_cournot_stay" = subj_prob_cournot_stay,
-      "bot_predicted_subj_cournot_trans" = bot_predicted_subj_cournot_trans,
-      "bot_predicted_subj_move" = bot_predicted_subj_move,
-      "bot_move" = bot_move,
-      "bot_move_str" = MOVES_STR[bot_move]
-    )
-    df_self_transition = bind_rows(
-      df_self_transition,
-      new_row
+    # Calculate outcomes based on simulated bot moves above
+    df_self_transition = df_self_transition %>%
+      mutate(
+        subj_outcome = ifelse(
+          (subj_move - bot_move) %% 3 == 2,
+          -1,
+          (subj_move - bot_move) %% 3
+        )
+      )
+
+    # Concatenate subject dataframe above with global df
+    simulation_df = bind_rows(
+      simulation_df,
+      df_self_transition
     )
   }
-
-  # Calculate outcomes based on simulated bot moves above
-  df_self_transition = df_self_transition %>%
-    mutate(
-      subj_outcome = ifelse(
-        (subj_move - bot_move) %% 3 == 2,
-        -1,
-        (subj_move - bot_move) %% 3
-      )
-    )
-
-  # Concatenate subject dataframe above with global df
-  simulation_df = bind_rows(
-    simulation_df,
-    df_self_transition
-  )
 }
 
 
-
-
 # Summarize results
-
 subject_summary = simulation_df %>%
-  group_by(subj) %>%
+  group_by(subj, subj_transition_bias_str) %>%
   summarize(
     "rounds" = n(),
-    "subject_win_pct" = mean(subj_outcome)
+    "subject_win_pct" = mean(subj_outcome),
+    "subject_win_count_diff" = sum(subj_outcome)
   )
 subject_summary
+# What fraction of subjects had positive win rates?
+subject_summary %>%
+  group_by(subj_transition_bias_str) %>%
+  filter(subject_win_pct < -0.5) %>%
+  summarize(n())
+
+subject_summary %>%
+  group_by(subj_transition_bias_str) %>%
+  filter(subject_win_count_diff > 45) %>%
+  summarize(n())
 
 
 overall_summary = subject_summary %>%
+  group_by(subj_transition_bias_str) %>%
   summarize(
     avg_win_rate = mean(subject_win_pct),
+    avg_win_count_diff = mean(subject_win_count_diff),
     subjects = n(),
-    se = sd(subject_win_pct) / sqrt(subjects)
+    se_win_rate = sd(subject_win_pct) / sqrt(subjects),
+    se_win_count_diff = sd(subject_win_count_diff) / sqrt(subjects),
+    max_win_rate = max(subject_win_pct),
+    max_win_count_diff = max(subject_win_count_diff)
   )
 overall_summary
 
 
-# FIGURE: Simulation results
+# FIGURE: Simulation results (subject win rates)
 subject_summary %>%
-  ggplot(aes(x = 1, y = subject_win_pct)) +
-  geom_jitter(height = 0, width = 0.5) +
+  ggplot(aes(x = subj_transition_bias_str, y = subject_win_pct, color = subj_transition_bias_str)) +
+  geom_jitter(height = 0, width = 0.25, alpha = 0.25) +
   # TODO add errorbars to the below
-  geom_point(data = overall_summary, aes(x = 1, y = avg_win_rate), color = "red", size = 3)
+  geom_point(data = overall_summary, aes(x = subj_transition_bias_str, y = avg_win_rate, color = subj_transition_bias_str), size = 3) +
+  geom_errorbar(data = overall_summary,
+                aes(x = subj_transition_bias_str, y = avg_win_rate, ymin = avg_win_rate-se_win_rate, ymax = avg_win_rate+se_win_rate, color = subj_transition_bias_str),
+                width = 0.1) +
+  scale_color_viridis(discrete = T) +
+  labs(x = "", y = "Subject win percent", color = "Self-transition bias") +
+  default_plot_theme
 
+
+# FIGURE: Simulation results (subject win count differentials)
+subject_summary %>%
+  ggplot(aes(x = subj_transition_bias_str, y = subject_win_count_diff, color = subj_transition_bias_str)) +
+  geom_jitter(height = 0, width = 0.25, alpha = 0.25) +
+  # TODO add errorbars to the below
+  geom_point(data = overall_summary, aes(x = subj_transition_bias_str, y = avg_win_count_diff, color = subj_transition_bias_str), size = 3) +
+  geom_errorbar(data = overall_summary,
+                aes(x = subj_transition_bias_str, y = avg_win_count_diff, ymin = avg_win_count_diff-se_win_count_diff, ymax = avg_win_count_diff+se_win_count_diff, color = subj_transition_bias_str),
+                width = 0.1) +
+  scale_color_viridis(discrete = T) +
+  labs(x = "", y = "Subject win count differential", color = "Self-transition bias") +
+  default_plot_theme
+
+
+
+# ANALYSIS: Simulate opponent-transition biases against self-transition bots ====
+
+# TODO clean this up and make actual functions like an adult...
+
+N_SUBJECTS = 100
+N_ROUNDS = 300
+MOVES = c(1, 2, 3)
+MOVES_STR = c("rock", "paper", "scissors")
+COURNOT_TRANSITIONS = c(-1, 0, 1)
+COURNOT_TRANSITIONS_STR = c("down", "stay", "up")
+
+
+
+simulation_df = data.frame()
+
+# NB: takes ~60s per bias
+for(transition_bias in COURNOT_TRANSITIONS) {
+  for(subj in seq(N_SUBJECTS)) {
+    print(paste("BEGINNING SIMULATION FOR SUBJECT: ", subj, ", BIAS: ", transition_bias))
+    # Initialize subject df
+    df_cournot_transition = data.frame(
+      "subj" = numeric(),
+      "subj_cournot_transition_bias" = numeric(),
+      "subj_cournot_transition_bias_str" = character(),
+      "round" = numeric(),
+      "subj_move" = numeric(),
+      "subj_move_str" = character(),
+      "subj_self_trans" = numeric(),
+      # Note these counts are inclusive of the current round, so decisions need to be made based on counts from previous round
+      "subj_total_trans_down" = numeric(),
+      "subj_total_trans_stay" = numeric(),
+      "subj_total_trans_up" = numeric(),
+      # Note these probabilities are up to the previous round so don't align with counts in same row
+      "subj_prob_trans_down" = numeric(),
+      "subj_prob_trans_stay" = numeric(),
+      "subj_prob_trans_up" = numeric(),
+      "bot_predicted_subj_self_trans" = numeric(),
+      "bot_predicted_subj_move" = numeric(),
+      "bot_move" = numeric(),
+      "bot_move_str" = character()
+    )
+
+    # Add moves for an individual subject's simulation, round by round!
+    for(round in seq(N_ROUNDS)) {
+      if(round == 1) {
+        subj_move = sample(MOVES, 1)
+        subj_self_trans = NA
+        subj_total_trans_down = 0
+        subj_total_trans_stay = 0
+        subj_total_trans_up = 0
+        subj_prob_trans_down = 0
+        subj_prob_trans_stay = 0
+        subj_prob_trans_up = 0
+
+        # Choose bot move
+        bot_predicted_subj_self_trans = NA
+        bot_predicted_subj_move = NA
+        bot_move = sample(MOVES, 1)
+      } else {
+        # Code using mod logic below is code from Ed, very snazzy
+        subj_move = ((df_cournot_transition$bot_move[round-1] + transition_bias - 1) %% 3) + 1
+        subj_prev_move = df_cournot_transition$subj_move[round-1]
+        subj_self_trans = ifelse(
+          (subj_move - subj_prev_move) %% 3 == 2,
+          -1,
+          (subj_move - subj_prev_move) %% 3
+        )
+
+        subj_total_trans_down = df_cournot_transition$subj_total_trans_down[round-1] + (subj_self_trans == -1)
+        subj_total_trans_stay = df_cournot_transition$subj_total_trans_stay[round-1] + (subj_self_trans == 0)
+        subj_total_trans_up = df_cournot_transition$subj_total_trans_up[round-1] + (subj_self_trans == 1)
+
+        total_transitions = max(sum(df_cournot_transition$subj_total_trans_down[round-1], # max avoids division by 0 below
+                                    df_cournot_transition$subj_total_trans_stay[round-1],
+                                    df_cournot_transition$subj_total_trans_up[round-1]), 0.001)
+        subj_prob_trans_down = df_cournot_transition$subj_total_trans_down[round-1] / total_transitions
+        subj_prob_trans_stay = df_cournot_transition$subj_total_trans_stay[round-1] / total_transitions
+        subj_prob_trans_up = df_cournot_transition$subj_total_trans_up[round-1] / total_transitions
+
+        # Identify most likely human self-transitions, break tie if needed
+        bot_predicted_subj_self_trans = NA
+        self_trans_probs = c(subj_prob_trans_down, subj_prob_trans_stay, subj_prob_trans_up)
+        max_prob_self_trans = which(self_trans_probs == max(self_trans_probs)) # Which of the above is max? (includes ties)
+        # Single max: predicted transition is index of max in COURNOT_TRANSITIONS
+        if(length(max_prob_self_trans) == 1) {
+          bot_predicted_subj_self_trans = COURNOT_TRANSITIONS[max_prob_self_trans]
+          # print(paste("1 max: ", round, ": ", max_prob_cournot, "choice: ", bot_predicted_subj_cournot_trans))
+        }
+        # All tied: sample randomly
+        if(length(max_prob_self_trans) == 3) {
+          bot_predicted_subj_self_trans = sample(COURNOT_TRANSITIONS, 1)
+          # print(paste("3-way tie: ", round, "choice: ", bot_predicted_subj_cournot_trans))
+        }
+        # 2-way tie. Determine which elements are tied based on sum of `max_prob_self_trans`,
+        # then sample transition from among relevant tied transitions
+        if(length(max_prob_self_trans) == 2) {
+          ties = sum(max_prob_self_trans)
+          bot_predicted_subj_self_trans = case_when(
+            ties == 3 ~ sample(c(COURNOT_TRANSITIONS[1], COURNOT_TRANSITIONS[2]), 1),
+            ties == 4 ~ sample(c(COURNOT_TRANSITIONS[1], COURNOT_TRANSITIONS[3]), 1),
+            ties == 5 ~ sample(c(COURNOT_TRANSITIONS[2], COURNOT_TRANSITIONS[3]), 1)
+          )
+          # print(paste("2-way tie: ", round, "choice: ", bot_predicted_subj_cournot_trans))
+          # print(max_prob_cournot)
+        }
+        # Choose bot move based on predicted human self-transition
+        # Code using mod logic below is code from Ed, very snazzy
+        bot_predicted_subj_move = ((bot_predicted_subj_self_trans + subj_prev_move - 1) %% 3) + 1
+        bot_move = (bot_predicted_subj_move %% 3) + 1
+      }
+
+      # Add move calculations above to dataframe
+      new_row = data.frame(
+        "subj" = subj,
+        "subj_cournot_transition_bias" = transition_bias,
+        "subj_cournot_transition_bias_str" = COURNOT_TRANSITIONS_STR[which(COURNOT_TRANSITIONS == transition_bias)],
+        "round" = round,
+        "subj_move" = subj_move,
+        "subj_move_str" = MOVES_STR[subj_move],
+        "subj_self_trans" = subj_self_trans,
+        "subj_total_trans_down" = subj_total_trans_down,
+        "subj_total_trans_up" = subj_total_trans_up,
+        "subj_total_trans_stay" = subj_total_trans_stay,
+        "subj_prob_trans_down" = subj_prob_trans_down,
+        "subj_prob_trans_stay" = subj_prob_trans_stay,
+        "subj_prob_trans_up" = subj_prob_trans_up,
+        "bot_predicted_subj_self_trans" = bot_predicted_subj_self_trans,
+        "bot_predicted_subj_move" = bot_predicted_subj_move,
+        "bot_move" = bot_move,
+        "bot_move_str" = MOVES_STR[bot_move]
+      )
+      df_cournot_transition = bind_rows(
+        df_cournot_transition,
+        new_row
+      )
+    }
+
+    # Calculate outcomes based on simulated bot moves above
+    df_cournot_transition = df_cournot_transition %>%
+      mutate(
+        subj_outcome = ifelse(
+          (subj_move - bot_move) %% 3 == 2,
+          -1,
+          (subj_move - bot_move) %% 3
+        )
+      )
+
+    # Concatenate subject dataframe above with global df
+    simulation_df = bind_rows(
+      simulation_df,
+      df_cournot_transition
+    )
+  }
+}
+
+
+# Summarize results
+subject_summary = simulation_df %>%
+  group_by(subj, subj_cournot_transition_bias_str) %>%
+  summarize(
+    "rounds" = n(),
+    "subject_win_pct" = mean(subj_outcome),
+    "subject_win_count_diff" = sum(subj_outcome)
+  )
+subject_summary
+# What fraction of subjects had positive win rates?
+subject_summary %>%
+  group_by(subj_cournot_transition_bias_str) %>%
+  filter(subject_win_pct < -0.5) %>%
+  summarize(n())
+
+
+overall_summary = subject_summary %>%
+  group_by(subj_cournot_transition_bias_str) %>%
+  summarize(
+    avg_win_rate = mean(subject_win_pct),
+    avg_win_count_diff = mean(subject_win_count_diff),
+    subjects = n(),
+    se_win_rate = sd(subject_win_pct) / sqrt(subjects),
+    se_win_count_diff = sd(subject_win_count_diff) / sqrt(subjects),
+    max_win_rate = max(subject_win_pct),
+    max_win_count_diff = max(subject_win_count_diff)
+  )
+overall_summary
+
+
+# FIGURE: Simulation results (subject win percentage)
+subject_summary %>%
+  ggplot(aes(x = subj_cournot_transition_bias_str, y = subject_win_pct, color = subj_cournot_transition_bias_str)) +
+  geom_jitter(height = 0, width = 0.25, alpha = 0.25) +
+  geom_point(data = overall_summary, aes(x = subj_cournot_transition_bias_str, y = avg_win_rate, color = subj_cournot_transition_bias_str), size = 3) +
+  geom_errorbar(data = overall_summary,
+                aes(x = subj_cournot_transition_bias_str, y = avg_win_rate, ymin = avg_win_rate-se_win_rate, ymax = avg_win_rate+se_win_rate, color = subj_cournot_transition_bias_str),
+                width = 0.1) +
+  scale_color_viridis(discrete = T) +
+  labs(x = "", y = "Subject win percent", color = "Opponent-transition bias") +
+  default_plot_theme
+
+
+# FIGURE: Simulation results (subject win count differential)
+subject_summary %>%
+  ggplot(aes(x = subj_cournot_transition_bias_str, y = subject_win_count_diff, color = subj_cournot_transition_bias_str)) +
+  geom_jitter(height = 0, width = 0.25, alpha = 0.25) +
+  geom_point(data = overall_summary, aes(x = subj_cournot_transition_bias_str, y = avg_win_count_diff, color = subj_cournot_transition_bias_str), size = 3) +
+  geom_errorbar(data = overall_summary,
+                aes(x = subj_cournot_transition_bias_str, y = avg_win_count_diff, ymin = avg_win_count_diff-se_win_count_diff, ymax = avg_win_count_diff+se_win_count_diff, color = subj_cournot_transition_bias_str),
+                width = 0.1) +
+  scale_color_viridis(discrete = T) +
+  labs(x = "", y = "Subject win count differential", color = "Opponent-transition bias") +
+  default_plot_theme
 
 
 # APPENDIX ====

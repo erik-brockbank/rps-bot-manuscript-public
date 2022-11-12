@@ -515,6 +515,24 @@ t.test(
 )
 
 
+# TEST: correlation between information gain and win count differential
+# NB: currently only looks at opponent-transition baserate bot, self-transition IG
+cournot_subjects_ig = transition_ig %>%
+  filter(bot_strategy == "opponent_courn_transitions")
+cournot_subjects_wcd = wcd_all %>%
+  filter(bot_strategy == "opponent_courn_transitions")
+cournot_subjects_ig = cournot_subjects_ig %>%
+  inner_join(cournot_subjects_wcd, by = c("bot_strategy", "game_id"))
+cournot_subjects_ig = cournot_subjects_ig %>%
+  mutate(win_count_diff_subj = -1 * win_count_diff)
+
+cor.test(cournot_subjects_ig$information_gain,
+         cournot_subjects_ig$win_count_diff_subj)
+plot(cournot_subjects_ig$information_gain,
+     cournot_subjects_ig$win_count_diff_subj)
+
+
+
 # FIGURE: Information gain for dependencies against bots ====
 
 transition_ig_summary = get_ig_summary(transition_ig)
@@ -587,7 +605,7 @@ ggsave(filename = "v3_adaptive_bot_response_summary.png",
 
 # TODO clean this up and make actual functions like an adult...
 
-N_SUBJECTS = 100
+N_SUBJECTS = 1000
 N_ROUNDS = 300
 MOVES = c(1, 2, 3)
 MOVES_STR = c("rock", "paper", "scissors")
@@ -597,7 +615,7 @@ TRANSITIONS_STR = c("down", "stay", "up")
 
 simulation_df = data.frame()
 
-# NB: takes ~60s per bias
+# NB: takes ~60s per bias for 100 participants
 for(transition_bias in TRANSITIONS) {
   for(subj in seq(N_SUBJECTS)) {
     print(paste("BEGINNING SIMULATION FOR SUBJECT: ", subj, ", BIAS: ", transition_bias))
@@ -747,12 +765,20 @@ subject_summary
 subject_summary %>%
   group_by(subj_transition_bias_str) %>%
   filter(subject_win_pct < -0.5) %>%
-  summarize(n())
+  summarize(
+    n()
+  )
 
 subject_summary %>%
   group_by(subj_transition_bias_str) %>%
-  filter(subject_win_count_diff > 45) %>%
-  summarize(n())
+  filter(subject_win_count_diff > 40) %>%
+  summarize(
+    mean_wcd_per_trial = mean(subject_win_pct),
+    mean_wcd = mean(subject_win_count_diff),
+    min_wins = min(subject_win_count_diff),
+    max_wins = max(subject_win_count_diff),
+    subjects = n()
+    )
 
 
 overall_summary = subject_summary %>%
@@ -802,7 +828,7 @@ subject_summary %>%
 
 # TODO clean this up and make actual functions like an adult...
 
-N_SUBJECTS = 100
+N_SUBJECTS = 1000
 N_ROUNDS = 300
 MOVES = c(1, 2, 3)
 MOVES_STR = c("rock", "paper", "scissors")
@@ -813,7 +839,7 @@ COURNOT_TRANSITIONS_STR = c("down", "stay", "up")
 
 simulation_df = data.frame()
 
-# NB: takes ~60s per bias
+# NB: takes ~60s per bias for every 100 simulated participants
 for(transition_bias in COURNOT_TRANSITIONS) {
   for(subj in seq(N_SUBJECTS)) {
     print(paste("BEGINNING SIMULATION FOR SUBJECT: ", subj, ", BIAS: ", transition_bias))
@@ -968,6 +994,17 @@ subject_summary %>%
   group_by(subj_cournot_transition_bias_str) %>%
   filter(subject_win_pct < -0.5) %>%
   summarize(n())
+
+subject_summary %>%
+  group_by(subj_cournot_transition_bias_str) %>%
+  filter(subject_win_pct > -0.1) %>%
+  summarize(
+    mean_wcd_per_trial = mean(subject_win_pct),
+    mean_wcd = mean(subject_win_count_diff),
+    min_wcd = min(subject_win_pct),
+    max_wcd = max(subject_win_pct),
+    subjects = n()
+  )
 
 
 overall_summary = subject_summary %>%

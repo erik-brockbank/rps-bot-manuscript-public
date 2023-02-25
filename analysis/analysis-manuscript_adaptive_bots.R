@@ -245,9 +245,8 @@ data %>%
 power = pwr.t.test(n = 20, sig.level = 0.05, power = 0.8, type = "one.sample", alternative = "two.sided")
 # we have 90% power to detect an effect size of d = 0.77, 80% to detect d = 0.66
 (1 / 3) + power$d * sqrt(1 / 12)
-# d = 0.77 this is equivalent to an average win rate of about 55% assuming individual win rates are uniformly distributed (unlikely)
+# d = 0.77 this is equivalent to an average win rate of about 55% assuming individual win rates are uniformly distributed
 
-# TODO add clarification to this: why the sqrt(1/12)?
 
 # Reverse calculation: how many people needed to detect effect size of bots winning 40%?
 d = (.4 - (1/3)) / sqrt(1/12) # d = .23 (small effect)
@@ -256,7 +255,6 @@ pwr.t.test(sig.level = 0.05, power = 0.8, d = d, type = "one.sample", alternativ
 
 # How much power did we have?
 pwr.t.test(sig.level = 0.05, d = d, n = 20, type = "one.sample", alternative = "two.sided")
-# Not much...
 
 
 # Print average and SE of *bot* win rates for each strategy condition
@@ -364,6 +362,46 @@ ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
        height = 6.5,
        dpi = 500, # NB: this requires re-opening in preview to fix dpi
        )
+
+
+
+
+# Thesis figure
+
+wcd_summary %>%
+  ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = complexity)) +
+  geom_point(size = 6) +
+  geom_errorbar(
+    aes(ymin = lower_se, ymax = upper_se),
+    width = 0.1, size = 1) +
+  # geom_jitter(data = wcd_all, aes(x = bot_strategy, y = win_count_diff),
+  #             size = 2, alpha = 0.75, width = 0.25, height = 0) +
+  geom_hline(yintercept = 0, size = 2, linetype = "dashed", color = "red") +
+  # labs(x = "", y = "Bot win count differential") +
+  labs(x = "", y = "") +
+  # ggtitle("Adaptive bot performance against humans") +
+  scale_x_discrete(
+    name = element_blank(),
+    # labels = STRATEGY_LABELS) +
+    labels = c())+
+  scale_color_viridis(discrete = T) +
+  default_plot_theme +
+  theme(
+    plot.title = element_text(size = 32, face = "bold"),
+    axis.title.y = element_text(size = 24, face = "bold"),
+    # NB: axis title below is to give cushion for adding complexity labels in PPT
+    # axis.title.x = element_text(size = 64),
+    # axis.text.x = element_blank(),
+    axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
+    axis.text.y = element_text(size = 14, face = "bold"),
+    legend.position = "right",
+    legend.title = element_text(size = 18, face = "bold"),
+    legend.text = element_text(size = 16),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+  )
+
+ggsave("adaptive_bot_wcd.pdf")
 
 
 

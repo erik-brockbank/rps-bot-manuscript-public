@@ -397,9 +397,8 @@ bot_data %>%
 power = pwr.t.test(n = 30, sig.level = 0.05, power = 0.9, type = "one.sample", alternative = "two.sided")
 # we have 90% power to detect an effect size of d = 0.61
 (1 / 3) + power$d * sqrt(1 / 12)
-# this is equivalent to an average win rate of about 51% assuming individual win rates are uniformly distributed (unlikely)
+# this is equivalent to an average win rate of about 51% assuming individual win rates are uniformly distributed
 
-# TODO add clarification to this: why the sqrt(1/12)?
 
 
 # ANALYSIS: Win rates, win count differentials ====
@@ -464,6 +463,95 @@ fig_overall + fig_rounds +
   # theme(plot.tag = element_text(size = 24))
 
 # TODO save to pdf
+
+
+
+
+# Thesis figure
+
+label_width = 10
+summary_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_positive"]], label_width),
+                   "prev_move_negative" = str_wrap(STRATEGY_LOOKUP[["prev_move_negative"]], label_width),
+                   "opponent_prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_positive"]], label_width),
+                   "opponent_prev_move_nil" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_nil"]], label_width),
+                   "win_nil_lose_positive" = str_wrap(STRATEGY_LOOKUP[["win_nil_lose_positive"]], label_width),
+                   "win_positive_lose_negative" = str_wrap(STRATEGY_LOOKUP[["win_positive_lose_negative"]], label_width),
+                   "outcome_transition_dual_dependency" = str_wrap(STRATEGY_LOOKUP[["outcome_transition_dual_dependency"]], label_width))
+
+wcd_summary %>%
+  ggplot(aes(x = bot_strategy, y = mean_win_count_diff)) +
+  geom_point(aes(color = bot_strategy),
+             size = 6) +
+  geom_errorbar(aes(color = bot_strategy, ymin = lower_se, ymax = upper_se),
+                width = 0.25, size = 1) +
+  geom_hline(yintercept = 0, size = 2, linetype = "dashed", color = "red") +
+  # labs(x = "", y = "Mean win count differential") +
+  #ggtitle("Win count differential across bot strategies") +
+  # ggtitle("Aggregate") +
+  #scale_x_discrete(labels = summary_labels) +
+  labs(x = "", y = "") +
+  scale_color_viridis(discrete = TRUE,
+                      name = element_blank()) +
+  individ_plot_theme +
+  theme(
+    # plot.title = element_text(size = 32, face = "bold"),
+    axis.title.y = element_text(size = 24, face = "bold"),
+    # axis.text.x = element_text(size = 20, face = "bold", angle = 0, vjust = 1),
+    # axis.text.x = element_text(size = 20, face = "bold", angle = 0, vjust = 1),
+    axis.text.x = element_blank(),
+    # axis.text.y = element_text(face = "bold", size = 20),
+    legend.position = "none",
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    # panel.grid.major.y = element_blank(),
+    # panel.grid.minor.y = element_blank(),
+  )
+
+ggsave("img/bot_wcd.pdf")
+
+
+label_width = 12
+strategy_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_positive"]], label_width),
+                    "prev_move_negative" = str_wrap(STRATEGY_LOOKUP[["prev_move_negative"]], label_width),
+                    "opponent_prev_move_nil" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_nil"]], label_width),
+                    "opponent_prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_positive"]], label_width),
+                    "win_nil_lose_positive" = str_wrap(STRATEGY_LOOKUP[["win_nil_lose_positive"]], label_width),
+                    "win_positive_lose_negative" = str_wrap(STRATEGY_LOOKUP[["win_positive_lose_negative"]], label_width),
+                    "outcome_transition_dual_dependency" = str_wrap(STRATEGY_LOOKUP[["outcome_transition_dual_dependency"]], label_width))
+
+block_labels = c("1" = "30", "2" = "60", "3" = "90", "4" = "120", "5" = "150",
+                 "6" = "180", "7" = "210", "8" = "240", "9" = "270", "10" = "300")
+
+block_data_summary %>%
+  ggplot(aes(x = round_block, y = mean_win_pct, color = bot_strategy)) +
+  geom_point(size = 6, alpha = 0.75) +
+  geom_errorbar(aes(ymin = lower_ci, ymax = upper_ci), size = 1, width = 0.25, alpha = 0.75) +
+  geom_hline(yintercept = 1 / 3, linetype = "dashed", color = "red", size = 2) +
+  # labs(x = "Game round", y = "Mean win percentage") +
+  # ggtitle("Participant win percentage against bot strategies") +
+  # ggtitle("By Round") +
+  labs(x = "", y = "") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = strategy_labels) +
+  scale_x_continuous(labels = block_labels, breaks = seq(1:10)) +
+  individ_plot_theme +
+  theme(#axis.text.x = element_blank(),
+    axis.title.y = element_text(size = 24, face = "bold"),
+    legend.text = element_text(face = "bold", size = 14),
+    # legend.position = "right",
+    legend.position = "none",
+    legend.spacing.y = unit(1.0, 'lines'),
+    #legend.key = element_rect(size = 2),
+    legend.key.size = unit(4.75, 'lines'),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.text.x = element_text(angle = 0)
+  )
+
+ggsave("img/bot_win_pct.pdf")
+
 
 
 # ANALYSIS: Conditional win percentages ====

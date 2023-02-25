@@ -1246,7 +1246,7 @@ dyad_data = add_outcome_transition(dyad_data) # combination of previous outcome,
 
 # Validate model with move baserates
 dyad_data = count_moves(dyad_data) # Count each player's move choices (cumulative)
-dyad_data = apply_move_count_prior(dyad_data, 50) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
+dyad_data = apply_move_count_prior(dyad_data, EVENT_COUNT_PRIOR) # Apply "prior" by setting counts to begin at `EVENT_COUNT_PRIOR`
 dyad_data = calculate_move_probs_move_count(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities based on counts from previous round
 dyad_data = calculate_opponent_move_probs(dyad_data) # Calculate opponent's probability of rock, paper, scissors on a given round
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS) # Calculate EV of each move (and chosen move) based on opponent move probabilities
@@ -1255,7 +1255,7 @@ fit_summary_moves = fit_model_to_subjects(dyad_data, model = "move baserate") # 
 
 # Self-transition model
 dyad_data = count_transitions(dyad_data)
-dyad_data = apply_transition_count_prior(dyad_data, 50)
+dyad_data = apply_transition_count_prior(dyad_data, EVENT_COUNT_PRIOR)
 # NB: the line below is the only part of the model fit that differs from the previous model
 dyad_data = calculate_move_probs_transition(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
@@ -1313,8 +1313,7 @@ dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
 fit_summary_outcome_transition = fit_model_to_subjects(dyad_data, model = "outcome given previous transition")
 
 
-
-# Finally: move given prior move, opponent prior move; move given prior two moves; transition given prior transition, prior outcome
+# TODO: move given prior move + opponent prior move; move given prior two moves; transition given prior transition + prior outcome
 
 
 
@@ -1338,8 +1337,8 @@ win_diff = dyad_data %>%
 win_diff %>%
   filter(win_count >= 28) %>%
   nrow()
-hist(win_diff$win_count[win_diff$win_count > 0])
 summary(win_diff$win_count[win_diff$win_count > 0])
+hist(win_diff$win_count[win_diff$win_count > 0])
 
 # TODO set this to 0 for analyses below based on full data
 THRESHOLD = 28
@@ -1353,22 +1352,22 @@ high_wc_subjects = win_diff %>%
 
 fit_summary_moves_cor = fit_summary_moves %>%
   inner_join(win_diff, by = c('subject')) %>%
-  filter(win_count >= THRESHOLD)
+  filter(win_count >= 0)
 fit_summary_transitions_cor = fit_summary_transitions %>%
   inner_join(win_diff, by = c('subject')) %>%
-  filter(win_count >= THRESHOLD)
+  filter(win_count >= 0)
 fit_summary_opponent_transitions_cor = fit_summary_opponent_transitions %>%
   inner_join(win_diff, by = c('subject')) %>%
-  filter(win_count >= THRESHOLD)
+  filter(win_count >= 0)
 fit_summary_move_prev_move_cor = fit_summary_move_prev_move %>%
   inner_join(win_diff, by = c('subject')) %>%
-  filter(win_count >= THRESHOLD)
+  filter(win_count >= 0)
 fit_summary_opponent_move_prev_move_cor = fit_summary_opponent_move_prev_move %>%
   inner_join(win_diff, by = c('subject')) %>%
-  filter(win_count >= THRESHOLD)
+  filter(win_count >= 0)
 fit_summary_outcome_transition_cor = fit_summary_outcome_transition %>%
   inner_join(win_diff, by = c('subject')) %>%
-  filter(win_count >= THRESHOLD)
+  filter(win_count >= 0)
 
 
 # Correlation between fitted softmax vals (or log likelihood) and win count differentials
@@ -1414,7 +1413,7 @@ fit_summary %>% group_by(model) %>% summarize(mean(softmax))
 # Summary plot
 p1 = fit_summary %>%
   # OPTIONAL: look at only high WCD subjects
-  filter(subject %in% high_wc_subjects$subject) %>%
+  # filter(subject %in% high_wc_subjects$subject) %>%
   # Rest of graph below is same
   ggplot(aes(x = model, y = softmax, color = model)) +
   stat_summary(fun = "mean", geom = "pointrange",
@@ -1435,7 +1434,7 @@ p1 = fit_summary %>%
 # Individual plot
 p2 = fit_summary %>%
   # OPTIONAL: look at only high WCD subjects
-  filter(subject %in% high_wc_subjects$subject) %>%
+  # filter(subject %in% high_wc_subjects$subject) %>%
   # Rest of graph below is same
   ggplot(aes(x = model, y = softmax, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
@@ -1450,8 +1449,6 @@ p2 = fit_summary %>%
         legend.position = "none"
   )
 
-p1
-p2
 p2 + p1
 # if predictors are uniform, softmax doesn't matter so much (should be around 0)
 
@@ -1461,16 +1458,14 @@ fit_summary %>% group_by(model) %>% summarize(mean(ll_per_round))
 # Summary plot
 p1 = fit_summary %>%
   # OPTIONAL: look at only high WCD subjects
-  filter(subject %in% high_wc_subjects$subject) %>%
+  # filter(subject %in% high_wc_subjects$subject) %>%
   # Rest of graph below is same
   ggplot(aes(x = model, y = ll_per_round, color = model)) +
-  # geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
-  # geom_point(stat="summary", fun="mean", size = 5) +
   stat_summary(fun = "mean", geom = "pointrange",
                fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
                fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
                size = 1.5) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
+  geom_hline(yintercept = -log(3), linetype = "dashed", linewidth = 1, color = "red") +
   labs(y = "") +
   scale_color_viridis(discrete = T,
                       name = element_blank(),
@@ -1484,11 +1479,11 @@ p1 = fit_summary %>%
 # Individual plot
 p2 = fit_summary %>%
   # OPTIONAL: look at only high WCD subjects
-  filter(subject %in% high_wc_subjects$subject) %>%
+  # filter(subject %in% high_wc_subjects$subject) %>%
   # Rest of graph below is same
   ggplot(aes(x = model, y = ll_per_round, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
+  geom_hline(yintercept = -log(3), linetype = "dashed", linewidth = 1, color = "red") +
   labs(y = "LL (per round)") +
   scale_color_viridis(discrete = T,
                       name = element_blank(),
@@ -1499,8 +1494,6 @@ p2 = fit_summary %>%
         legend.position = "none"
   )
 
-p1
-p2
 p2 + p1
 
 
@@ -1512,10 +1505,9 @@ p2 + p1
 
 # MODEL FITS - WEIGHTED MOVE BASERATES ====
 
-# Slopes chosen below to give memory for roughly last 2, 3, 4, 5, 10 trials
-# TODO confirm "+1" belongs in memory calc below
-pwr_slopes = c(-0.85, -1.2, -1.35, -1.7, -2.8)
-memory_trials = sapply(X = pwr_slopes, FUN = function(x) {sum((1:300)^x)+1})
+# Slopes chosen below to give memory for roughly last 10, 5, 3 trials
+pwr_slopes = c(-0.836, -1.094, -1.365)
+memory_trials = sapply(X = pwr_slopes, FUN = function(x) {sum((1:300)^x)})
 
 mult = 10
 prior_trials = sapply(X = memory_trials, FUN = function(x) {round((mult * x) / 3)})
@@ -1524,7 +1516,6 @@ prior_trials = sapply(X = memory_trials, FUN = function(x) {round((mult * x) / 3
 # Weighted move baserates
 # NB: this takes ~3 mins.
 fit_summary_weighted = fit_summary_moves
-# fit_summary_weighted$model = "move baserate"
 for (x in seq(length(pwr_slopes))) {
   print(x)
   dyad_data = count_moves_w(dyad_data, pwr_slope = pwr_slopes[x])
@@ -1532,7 +1523,7 @@ for (x in seq(length(pwr_slopes))) {
   dyad_data = calculate_move_probs_move_count_w(dyad_data, MOVE_PROBABILITY_PRIOR)
   dyad_data = calculate_opponent_move_probs(dyad_data)
   dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-  fit_summary_moves_weighted = fit_model_to_subjects(dyad_data, model = paste("weighted move baserate, slope:", pwr_slopes[x]))
+  fit_summary_moves_weighted = fit_model_to_subjects(dyad_data, model = paste("weighted move baserate, trial memory:", round(memory_trials[x])))
   fit_summary_weighted = rbind(fit_summary_weighted, fit_summary_moves_weighted)
 }
 
@@ -1543,11 +1534,9 @@ table(fit_summary_weighted$model)
 
 fit_summary_weighted$model = factor(fit_summary_weighted$model,
                                     levels = c("move baserate",
-                                               "weighted move baserate, slope: -0.85",
-                                               "weighted move baserate, slope: -1.2",
-                                               "weighted move baserate, slope: -1.35",
-                                               "weighted move baserate, slope: -1.7",
-                                               "weighted move baserate, slope: -2.8"
+                                               paste("weighted move baserate, trial memory:", round(memory_trials[1])),
+                                               paste("weighted move baserate, trial memory:", round(memory_trials[2])),
+                                               paste("weighted move baserate, trial memory:", round(memory_trials[3]))
                                     )
 )
 
@@ -1564,7 +1553,7 @@ p1 = fit_summary_weighted %>%
                fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
                fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
                size = 1.5) +
-  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1, color = "red") +
   labs(y = "") +
   scale_color_viridis(discrete = T,
                       name = paste("Prior multiplier:", mult),
@@ -1579,7 +1568,7 @@ p1 = fit_summary_weighted %>%
 p2 = fit_summary_weighted %>%
   ggplot(aes(x = model, y = softmax, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1, color = "red") +
   labs(y = "Softmax parameter") +
   scale_color_viridis(discrete = T,
                       name = element_blank(),
@@ -1590,8 +1579,6 @@ p2 = fit_summary_weighted %>%
         legend.position = "none"
   )
 
-p1
-p2
 p2 + p1
 
 
@@ -1601,13 +1588,11 @@ fit_summary_weighted %>% group_by(model) %>% summarize(mean(ll_per_round))
 # Summary plot
 p1 = fit_summary_weighted %>%
   ggplot(aes(x = model, y = ll_per_round, color = model)) +
-  # geom_jitter(width = 0.1, height = 0, alpha = 0.5) +
-  # geom_point(stat="summary", fun="mean", size = 5) +
   stat_summary(fun = "mean", geom = "pointrange",
                fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
                fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
                size = 1.5) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
   labs(y = "") +
   scale_color_viridis(discrete = T,
                       name = paste("Prior multiplier:", mult),
@@ -1622,7 +1607,7 @@ p1 = fit_summary_weighted %>%
 p2 = fit_summary_weighted %>%
   ggplot(aes(x = model, y = ll_per_round, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
   labs(y = "LL (per round)") +
   scale_color_viridis(discrete = T,
                       name = element_blank(),
@@ -1633,8 +1618,6 @@ p2 = fit_summary_weighted %>%
         legend.position = "none"
   )
 
-p1
-p2
 p2 + p1
 
 
@@ -1645,7 +1628,6 @@ p2 + p1
 # Weighted move baserates
 # NB: this takes ~5 mins.
 fit_summary_weighted = fit_summary_transitions
-# fit_summary_weighted$model = "transition baserate"
 for (x in seq(length(pwr_slopes))) {
   print(x)
   dyad_data = count_transitions_w(dyad_data, pwr_slope = pwr_slopes[x])
@@ -1653,7 +1635,7 @@ for (x in seq(length(pwr_slopes))) {
   dyad_data = calculate_move_probs_transition_w(dyad_data, MOVE_PROBABILITY_PRIOR, TRANSITION_VALS)
   dyad_data = calculate_opponent_move_probs(dyad_data)
   dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-  fit_summary_transitions_weighted = fit_model_to_subjects(dyad_data, model = paste("weighted transition baserate, slope:", pwr_slopes[x]))
+  fit_summary_transitions_weighted = fit_model_to_subjects(dyad_data, model = paste("weighted transition baserate, trial memory:", round(memory_trials[x])))
   fit_summary_weighted = rbind(fit_summary_weighted, fit_summary_transitions_weighted)
 }
 
@@ -1665,11 +1647,9 @@ table(fit_summary_weighted$model)
 
 fit_summary_weighted$model = factor(fit_summary_weighted$model,
                                     levels = c("transition baserate",
-                                               "weighted transition baserate, slope: -0.85",
-                                               "weighted transition baserate, slope: -1.2",
-                                               "weighted transition baserate, slope: -1.35",
-                                               "weighted transition baserate, slope: -1.7",
-                                               "weighted transition baserate, slope: -2.8"
+                                               paste("weighted transition baserate, trial memory:",round(memory_trials[1])),
+                                               paste("weighted transition baserate, trial memory:",round(memory_trials[2])),
+                                               paste("weighted transition baserate, trial memory:",round(memory_trials[3]))
                                     )
 )
 # Format for figure
@@ -1686,7 +1666,7 @@ p1 = fit_summary_weighted %>%
                fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
                fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
                size = 1.5) +
-  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1, color = "red") +
   labs(y = "") +
   scale_color_viridis(discrete = T,
                       name = paste("Prior multiplier:", mult),
@@ -1701,7 +1681,7 @@ p1 = fit_summary_weighted %>%
 p2 = fit_summary_weighted %>%
   ggplot(aes(x = model, y = softmax, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed", size = 1) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1, color = "red") +
   labs(y = "Softmax parameter") +
   scale_color_viridis(discrete = T,
                       name = element_blank(),
@@ -1712,8 +1692,6 @@ p2 = fit_summary_weighted %>%
         legend.position = "none"
   )
 
-p1
-p2
 p2 + p1
 
 
@@ -1730,7 +1708,7 @@ p1 = fit_summary_weighted %>%
                fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
                fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
                size = 1.5) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
   labs(y = "") +
   scale_color_viridis(discrete = T,
                       name = paste("Prior multiplier:", mult),
@@ -1745,7 +1723,7 @@ p1 = fit_summary_weighted %>%
 p2 = fit_summary_weighted %>%
   ggplot(aes(x = model, y = ll_per_round, color = model)) +
   geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
-  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
   labs(y = "LL (per round)") +
   scale_color_viridis(discrete = T,
                       name = element_blank(),
@@ -1756,8 +1734,6 @@ p2 = fit_summary_weighted %>%
         legend.position = "none"
   )
 
-p1
-p2
 p2 + p1
 
 

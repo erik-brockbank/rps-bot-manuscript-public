@@ -234,7 +234,7 @@ count_moves_w = function(data, pwr_slope) {
             count_rock_w = sum(
               # In each row, fetch player moves from 1:round index, reverse them
               # to weight most recent moves highest, get all previous rows where move = "rock",
-              # apply exponential weight to those rows (1:round_index)^-1, then sum
+              # apply power law weight to those rows (1:round_index)^-1, then sum
               (rev(.$player_move[1:round_index]) == "rock") * (seq_len(round_index)^pwr_slope)
             ),
             count_paper_w = sum((rev(.$player_move[1:round_index]) == "paper") * (seq_len(round_index)^pwr_slope)),
@@ -383,7 +383,7 @@ count_transitions_w = function(data, pwr_slope) {
             count_transition_up_w = sum(
               # In each row, fetch player transitions from 1:round index, reverse them
               # to weight most recent transitions highest, get all previous rows where transition = "up",
-              # apply exponential weight to those rows (1:round_index)^-1, then sum
+              # apply power law weight to those rows (1:round_index)^-1, then sum
               (rev(.$transition[1:round_index]) == "up") * (seq_len(round_index)^pwr_slope)
             ),
             count_transition_down_w = sum((rev(.$transition[1:round_index]) == "down") * (seq_len(round_index)^pwr_slope)),
@@ -575,7 +575,7 @@ count_opponent_transitions_w = function(data, pwr_slope) {
             count_opponent_transition_up_w = sum(
               # In each row, fetch opponent transitions from 1:round index, reverse them
               # to weight most recent opponent transitions highest, get all previous rows where opp. transition == "up",
-              # apply exponential weight to those rows (1:round_index)^-1, then sum
+              # apply power law weight to those rows (1:round_index)^-1, then sum
               (rev(.$opponent_transition[1:round_index]) == "up") * (seq_len(round_index)^pwr_slope)
             ),
             count_opponent_transition_down_w = sum((rev(.$opponent_transition[1:round_index]) == "down") * (seq_len(round_index)^pwr_slope)),
@@ -831,7 +831,7 @@ count_prev_move_w = function(data, pwr_slope) {
             count_prev_rock_w = sum(
               # In each row, fetch player prev moves from 1:round index, reverse them
               # to weight most recent prev moves highest, get all previous rows where prev move == "rock",
-              # apply exponential weight to those rows (1:round_index)^-1, then sum
+              # apply power law weight to those rows (1:round_index)^-1, then sum
               (rev(.$player_prev_move[1:round_index]) == "rock") * (seq_len(round_index)^pwr_slope)
             ),
             count_prev_paper_w = sum((rev(.$player_prev_move[1:round_index]) == "paper") * (seq_len(round_index)^pwr_slope)),
@@ -854,7 +854,7 @@ count_prev_move_current_move_w = function(data, pwr_slope) {
             count_rock_rock_w = sum(
               # In each row, fetch player prev move + current move from 1:round index, reverse them
               # to weight most recent moves highest, get all previous rows where prev move + current move == "rock-rock",
-              # apply exponential weight to those rows (1:round_index)^-1, then sum
+              # apply power law weight to those rows (1:round_index)^-1, then sum
               (rev(.$player_prev_move_current_move[1:round_index]) == "rock-rock") * (seq_len(round_index)^pwr_slope)
             ),
             count_rock_paper_w = sum((rev(.$player_prev_move_current_move[1:round_index]) == "rock-paper") * (seq_len(round_index)^pwr_slope)),
@@ -1058,9 +1058,9 @@ apply_opponent_prev_move_current_move_count_prior = function(data, count_prior) 
     )
 }
 
-# Calculate move probability on a given round based on *opponent* previous move, current move counts from previous round
+# Calculate move probability on a given round based on *opponent* previous move, player current move counts from previous round
 # NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
-calculate_move_probs_opponent_move_prev_move = function(data, probability_prior) {
+calculate_move_probs_move_opponent_prev_move = function(data, probability_prior) {
   # First, calculate probability of each *opponent previous move*, current move transition
   # as of the previous round
   data = data %>%
@@ -1141,6 +1141,182 @@ calculate_move_probs_opponent_move_prev_move = function(data, probability_prior)
     )
   return(data)
 }
+
+
+# WEIGHTED MOVE GIVEN OPPONENT PREVIOUS MOVE FUNCTIONS
+
+# Generate *weighted* sum of each previous *opponent* move
+count_opponent_prev_move_w = function(data, pwr_slope) {
+  data %>%
+    split(data$player_id) %>%
+    map_dfr(
+      function(dat) {
+        dat %>%
+          rowwise() %>%
+          mutate(
+            count_opp_prev_rock_w = sum(
+              # In each row, fetch opponent prev moves from 1:round index, reverse them
+              # to weight most recent opponent prev moves highest, get all previous rows where
+              # opponent prev move == "rock", apply power law weight to those rows (1:round_index)^-1, then sum
+              (rev(.$opponent_prev_move[1:round_index]) == "rock") * (seq_len(round_index)^pwr_slope)
+            ),
+            count_opp_prev_paper_w = sum((rev(.$opponent_prev_move[1:round_index]) == "paper") * (seq_len(round_index)^pwr_slope)),
+            count_opp_prev_scissors_w = sum((rev(.$opponent_prev_move[1:round_index]) == "scissors") * (seq_len(round_index)^pwr_slope))
+          )
+      }
+    )
+}
+
+
+# Count *weighted* cumulative number of combinations of *opponent* previous move, player current move
+count_opponent_prev_move_current_move_w = function(data, pwr_slope) {
+  data %>%
+    split(data$player_id) %>%
+    map_dfr(
+      function(dat) {
+        dat %>%
+          rowwise() %>%
+          mutate(
+            count_opp_rock_rock_w = sum(
+              # In each row, fetch opponent prev move + player current move from 1:round index, reverse them
+              # to weight most recent moves highest, get all previous rows where opp. prev move + current move == "rock-rock",
+              # apply power law weight to those rows (1:round_index)^-1, then sum
+              (rev(.$player_prev_move_current_move[1:round_index]) == "rock-rock") * (seq_len(round_index)^pwr_slope)
+            ),
+            count_opp_rock_paper_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "rock-paper") * (seq_len(round_index)^pwr_slope)),
+            count_opp_rock_scissors_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "rock-scissors") * (seq_len(round_index)^pwr_slope)),
+            count_opp_paper_rock_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "paper-rock") * (seq_len(round_index)^pwr_slope)),
+            count_opp_paper_paper_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "paper-paper") * (seq_len(round_index)^pwr_slope)),
+            count_opp_paper_scissors_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "paper-scissors") * (seq_len(round_index)^pwr_slope)),
+            count_opp_scissors_rock_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "scissors-rock") * (seq_len(round_index)^pwr_slope)),
+            count_opp_scissors_paper_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "scissors-paper") * (seq_len(round_index)^pwr_slope)),
+            count_opp_scissors_scissors_w = sum((rev(.$opponent_prev_move_current_move[1:round_index]) == "scissors-scissors") * (seq_len(round_index)^pwr_slope))
+          )
+      }
+    )
+}
+
+
+# Apply "prior" to *opponent* previous move counts by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+# NOTE we apply a prior count of 3 times the prior for events we're conditioning on
+apply_opponent_prev_move_count_w_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      count_opp_prev_rock_w = count_opp_prev_rock_w + count_prior,
+      count_opp_prev_paper_w = count_opp_prev_paper_w + count_prior,
+      count_opp_prev_scissors_w = count_opp_prev_scissors_w + count_prior
+    )
+}
+
+
+# Apply "prior" to *weighted* *opponent* previous move, player current move counts
+# by increasing all counts by `count_prior`
+# Counts start at `count_prior` rather than 0, increase from that amount
+apply_opponent_prev_move_current_move_count_w_prior = function(data, count_prior) {
+  data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      count_opp_rock_rock_w = count_opp_rock_rock_w + count_prior,
+      count_opp_rock_paper_w = count_opp_rock_paper_w + count_prior,
+      count_opp_rock_scissors_w = count_opp_rock_scissors_w + count_prior,
+      count_opp_paper_rock_w = count_opp_paper_rock_w + count_prior,
+      count_opp_paper_paper_w = count_opp_paper_paper_w + count_prior,
+      count_opp_paper_scissors_w = count_opp_paper_scissors_w + count_prior,
+      count_opp_scissors_rock_w = count_opp_scissors_rock_w + count_prior,
+      count_opp_scissors_paper_w = count_opp_scissors_paper_w + count_prior,
+      count_opp_scissors_scissors_w = count_opp_scissors_scissors_w + count_prior
+    )
+}
+
+# Calculate move probability on a given round based on *weighted* *opponent* previous move, current move counts from previous round
+# NB: the `probability_prior` is only needed to attach a probability to very first round when `lag` is NA
+calculate_move_probs_move_opponent_prev_move_w = function(data, probability_prior) {
+  # First, calculate probability of each *opponent previous move*, current move transition
+  # as of the previous round
+  data = data %>%
+    group_by(player_id) %>%
+    mutate(
+      prob_opp_rock_rock_w = ifelse(is.na(lag(count_opp_rock_rock_w, 1)),
+                                    probability_prior,
+                                    lag(count_opp_rock_rock_w, 1) / lag(count_opp_prev_rock_w, 1)
+      ),
+      prob_opp_rock_paper_w = ifelse(is.na(lag(count_opp_rock_paper_w, 1)),
+                                     probability_prior,
+                                     lag(count_opp_rock_paper_w, 1) / lag(count_opp_prev_rock_w, 1)
+      ),
+      prob_opp_rock_scissors_w = ifelse(is.na(lag(count_opp_rock_scissors_w, 1)),
+                                        probability_prior,
+                                        lag(count_opp_rock_scissors_w, 1) / lag(count_opp_prev_rock_w, 1)
+      ),
+      prob_opp_paper_rock_w = ifelse(is.na(lag(count_opp_paper_rock_w, 1)),
+                                     probability_prior,
+                                     lag(count_opp_paper_rock_w, 1) / lag(count_opp_prev_paper_w, 1)
+      ),
+      prob_opp_paper_paper_w = ifelse(is.na(lag(count_opp_paper_paper_w, 1)),
+                                      probability_prior,
+                                      lag(count_opp_paper_paper_w, 1) / lag(count_opp_prev_paper_w, 1)
+      ),
+      prob_opp_paper_scissors_w = ifelse(is.na(lag(count_opp_paper_scissors_w, 1)),
+                                         probability_prior,
+                                         lag(count_opp_paper_scissors_w, 1) / lag(count_opp_prev_paper_w, 1)
+      ),
+      prob_opp_scissors_rock_w = ifelse(is.na(lag(count_opp_scissors_rock_w, 1)),
+                                        probability_prior,
+                                        lag(count_opp_scissors_rock_w, 1) / lag(count_opp_prev_scissors_w, 1)
+      ),
+      prob_opp_scissors_paper_w = ifelse(is.na(lag(count_opp_scissors_paper_w, 1)),
+                                         probability_prior,
+                                         lag(count_opp_scissors_paper_w, 1) / lag(count_opp_prev_scissors_w, 1)
+      ),
+      prob_opp_scissors_scissors_w = ifelse(is.na(lag(count_opp_scissors_scissors_w, 1)),
+                                            probability_prior,
+                                            lag(count_opp_scissors_scissors_w, 1) / lag(count_opp_prev_scissors_w, 1)
+      )
+    )
+
+  # Now, select move probabilities calculated above based on opponent previous move
+  data = data %>%
+    group_by(player_id) %>%
+    rowwise() %>%
+    mutate(
+      prob_rock = ifelse(opponent_prev_move == "none",
+                         # If opponent previous move was "none", probability of rock is just prior. This is a bit clumsy but conservative.
+                         probability_prior,
+                         # Else, probability of rock is probability from above for opponent previous move -> "rock"
+                         case_when(
+                           opponent_prev_move == "rock" ~ prob_opp_rock_rock_w,
+                           opponent_prev_move == "paper" ~ prob_opp_paper_rock_w,
+                           opponent_prev_move == "scissors" ~ prob_opp_scissors_rock_w,
+                           TRUE ~ probability_prior # NB: this should never be activated
+                         )
+      ),
+      prob_paper = ifelse(opponent_prev_move == "none",
+                          probability_prior,
+                          case_when(
+                            opponent_prev_move == "rock" ~ prob_opp_rock_paper_w,
+                            opponent_prev_move == "paper" ~ prob_opp_paper_paper_w,
+                            opponent_prev_move == "scissors" ~ prob_opp_scissors_paper_w,
+                            TRUE ~ probability_prior # NB: this should never be activated
+                          )
+      ),
+      prob_scissors = ifelse(opponent_prev_move == "none",
+                             probability_prior,
+                             case_when(
+                               opponent_prev_move == "rock" ~ prob_opp_rock_scissors_w,
+                               opponent_prev_move == "paper" ~ prob_opp_paper_scissors_w,
+                               opponent_prev_move == "scissors" ~ prob_opp_scissors_scissors_w,
+                               TRUE ~ probability_prior # NB: this should never be activated
+                             )
+      )
+    )
+  return(data)
+}
+
+
 
 
 # OUTCOME-TRANSITION FUNCTIONS
@@ -1295,32 +1471,24 @@ calculate_move_probs_outcome_transition = function(data, probability_prior, tran
                          )
       ),
       prob_paper = ifelse(player_prev_outcome == "none",
-                         # If player previous outcome was "none", probability of rock is just prior. This is a bit clumsy but conservative.
                          probability_prior,
-                         # Else, probability of rock is probability from above for player previous outcome -> transition that leads to "rock"
                          case_when(
                            player_prev_outcome == "win" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
-                                                                 # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
                                                                  probability_prior,
-                                                                 # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
                                                                  case_when(
                                                                    transition_lookup[player_prev_move, "paper"] == "up" ~ prob_win_up,
                                                                    transition_lookup[player_prev_move, "paper"] == "down" ~ prob_win_down,
                                                                    transition_lookup[player_prev_move, "paper"] == "stay" ~ prob_win_stay,
                                                                    TRUE ~ probability_prior)),
                            player_prev_outcome == "loss" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
-                                                                  # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
                                                                   probability_prior,
-                                                                  # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
                                                                   case_when(
                                                                     transition_lookup[player_prev_move, "paper"] == "up" ~ prob_loss_up,
                                                                     transition_lookup[player_prev_move, "paper"] == "down" ~ prob_loss_down,
                                                                     transition_lookup[player_prev_move, "paper"] == "stay" ~ prob_loss_stay,
                                                                     TRUE ~ probability_prior)),
                            player_prev_outcome == "tie" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
-                                                                 # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
                                                                  probability_prior,
-                                                                 # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
                                                                  case_when(
                                                                    transition_lookup[player_prev_move, "paper"] == "up" ~ prob_tie_up,
                                                                    transition_lookup[player_prev_move, "paper"] == "down" ~ prob_tie_down,
@@ -1330,32 +1498,24 @@ calculate_move_probs_outcome_transition = function(data, probability_prior, tran
                          )
       ),
       prob_scissors = ifelse(player_prev_outcome == "none",
-                          # If player previous outcome was "none", probability of rock is just prior. This is a bit clumsy but conservative.
                           probability_prior,
-                          # Else, probability of rock is probability from above for player previous outcome -> transition that leads to "rock"
                           case_when(
                             player_prev_outcome == "win" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
-                                                                  # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
                                                                   probability_prior,
-                                                                  # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
                                                                   case_when(
                                                                     transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_win_up,
                                                                     transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_win_down,
                                                                     transition_lookup[player_prev_move, "scissors"] == "stay" ~ prob_win_stay,
                                                                     TRUE ~ probability_prior)),
                             player_prev_outcome == "loss" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
-                                                                   # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
                                                                    probability_prior,
-                                                                   # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
                                                                    case_when(
                                                                      transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_loss_up,
                                                                      transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_loss_down,
                                                                      transition_lookup[player_prev_move, "scissors"] == "stay" ~ prob_loss_stay,
                                                                      TRUE ~ probability_prior)),
                             player_prev_outcome == "tie" ~ ifelse(is.na(player_prev_move) | player_prev_move == "none",
-                                                                  # If previous move was NA or "none", probability of rock is just prior. This is a bit clumsy but conservative.
                                                                   probability_prior,
-                                                                  # Else, probability of rock is appropriate transition probability from above for previous outcome, previous move -> "rock"
                                                                   case_when(
                                                                     transition_lookup[player_prev_move, "scissors"] == "up" ~ prob_tie_up,
                                                                     transition_lookup[player_prev_move, "scissors"] == "down" ~ prob_tie_down,
@@ -1559,7 +1719,7 @@ fit_summary_opponent_transitions = fit_model_to_subjects(dyad_data, model = "opp
 
 
 
-# Move given prior move model
+# Move given previous move model
 # NB: two different "count" calls here to determine base rates (and two prior augments)
 dyad_data = count_prev_move(dyad_data)
 dyad_data = count_prev_move_current_move(dyad_data)
@@ -1572,17 +1732,17 @@ dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
 fit_summary_move_prev_move = fit_model_to_subjects(dyad_data, model = "move given previous move")
 
 
-# Move given opponent prior move model
+# Move given opponent previous move model
 # NB: two different "count" calls here to determine base rates (and two prior augments)
 dyad_data = count_opponent_prev_move(dyad_data)
 dyad_data = count_opponent_prev_move_current_move(dyad_data)
 dyad_data = apply_opponent_prev_move_count_prior(dyad_data, count_prior = 3) # NOTE prior here
 dyad_data = apply_opponent_prev_move_current_move_count_prior(dyad_data, EVENT_COUNT_PRIOR)
 # NB: the line below is the only part of the model fit that differs from the previous models
-dyad_data = calculate_move_probs_opponent_move_prev_move(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities
+dyad_data = calculate_move_probs_move_opponent_prev_move(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities
 dyad_data = calculate_opponent_move_probs(dyad_data)
 dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
-fit_summary_opponent_move_prev_move = fit_model_to_subjects(dyad_data, model = "move given opponent previous move")
+fit_summary_move_opponent_prev_move = fit_model_to_subjects(dyad_data, model = "move given opponent previous move")
 
 
 # Outcome-transition model
@@ -1598,7 +1758,7 @@ dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
 fit_summary_outcome_transition = fit_model_to_subjects(dyad_data, model = "outcome given previous transition")
 
 
-# TODO: move given prior move + opponent prior move; move given prior two moves; transition given prior transition + prior outcome
+# TODO: move given previous move + opponent previous move; move given previous two moves; transition given previous transition + previous outcome
 
 
 
@@ -1647,7 +1807,7 @@ fit_summary_opponent_transitions_cor = fit_summary_opponent_transitions %>%
 fit_summary_move_prev_move_cor = fit_summary_move_prev_move %>%
   inner_join(win_diff, by = c('subject')) %>%
   filter(win_count >= 0)
-fit_summary_opponent_move_prev_move_cor = fit_summary_opponent_move_prev_move %>%
+fit_summary_move_opponent_prev_move_cor = fit_summary_move_opponent_prev_move %>%
   inner_join(win_diff, by = c('subject')) %>%
   filter(win_count >= 0)
 fit_summary_outcome_transition_cor = fit_summary_outcome_transition %>%
@@ -1660,7 +1820,7 @@ plot(fit_summary_moves_cor$ll_per_round, fit_summary_moves_cor$win_count)
 plot(fit_summary_transitions_cor$ll_per_round, fit_summary_transitions_cor$win_count)
 plot(fit_summary_opponent_transitions_cor$ll_per_round, fit_summary_opponent_transitions_cor$win_count)
 plot(fit_summary_move_prev_move_cor$ll_per_round, fit_summary_move_prev_move_cor$win_count)
-plot(fit_summary_opponent_move_prev_move_cor$ll_per_round, fit_summary_opponent_move_prev_move_cor$win_count)
+plot(fit_summary_move_opponent_prev_move_cor$ll_per_round, fit_summary_move_opponent_prev_move_cor$win_count)
 plot(fit_summary_outcome_transition_cor$ll_per_round, fit_summary_outcome_transition_cor$win_count)
 
 
@@ -1668,7 +1828,7 @@ cor.test(fit_summary_moves_cor$ll_per_round, fit_summary_moves_cor$win_count) # 
 cor.test(fit_summary_transitions_cor$ll_per_round, fit_summary_transitions_cor$win_count) # N.S.
 cor.test(fit_summary_opponent_transitions_cor$ll_per_round, fit_summary_opponent_transitions_cor$win_count) # N.S.
 cor.test(fit_summary_move_prev_move_cor$ll_per_round, fit_summary_move_prev_move_cor$win_count) # p = .07
-cor.test(fit_summary_opponent_move_prev_move_cor$ll_per_round, fit_summary_opponent_move_prev_move_cor$win_count) # N. S.
+cor.test(fit_summary_move_opponent_prev_move_cor$ll_per_round, fit_summary_move_opponent_prev_move_cor$win_count) # N. S.
 cor.test(fit_summary_outcome_transition_cor$ll_per_round, fit_summary_outcome_transition_cor$win_count) # p = 0.005
 
 
@@ -1680,7 +1840,7 @@ fit_summary = rbind(fit_summary_moves,
                     fit_summary_transitions,
                     fit_summary_opponent_transitions,
                     fit_summary_move_prev_move,
-                    fit_summary_opponent_move_prev_move,
+                    fit_summary_move_opponent_prev_move,
                     fit_summary_outcome_transition)
 # Set order of conditions
 fit_summary$model = factor(fit_summary$model,
@@ -1801,7 +1961,7 @@ PRIOR_TRIALS = sapply(X = MEMORY_TRIALS, function(x) {round((PRIOR_MULTIPLIER * 
 # MODEL FITS - WEIGHTED MOVE BASERATES ====
 
 # Weighted move baserates
-# NB: this takes ~3 mins.
+# NB: this takes ~2 mins.
 fit_summary_weighted = fit_summary_moves
 for (x in seq(length(PWR_SLOPES))) {
   print(x)
@@ -1913,7 +2073,7 @@ p2 + p1
 # MODEL FITS - WEIGHTED TRANSITIONS ====
 
 # Weighted self-transitions
-# NB: this takes ~5 mins.
+# NB: this takes ~3 mins.
 fit_summary_weighted = fit_summary_transitions
 for (x in seq(length(PWR_SLOPES))) {
   print(x)
@@ -2019,10 +2179,9 @@ p2 + p1
 
 
 # MODEL FITS - WEIGHTED OPPONENT TRANSITIONS ====
-# NB: do we need this?
 
 # Weighted opponent-transitions
-# NB: this takes ~5 mins.
+# NB: this takes ~3 mins.
 fit_summary_weighted = fit_summary_opponent_transitions
 for (x in seq(length(PWR_SLOPES))) {
   print(x)
@@ -2129,9 +2288,10 @@ p2 + p1
 
 
 
-# MODEL FITS - WEIGHTED MOVE GIVEN PRIOR MOVE ====
+# MODEL FITS - WEIGHTED MOVE GIVEN PREVIOUS MOVE ====
 
-# Weighted move given prior move
+# Weighted move given previous move
+# NB: this takes ~4 mins.
 fit_summary_weighted = fit_summary_move_prev_move
 for (x in seq(length(PWR_SLOPES))) {
   print(x)
@@ -2151,13 +2311,127 @@ unique(fit_summary_weighted$model)
 
 
 
-# MODEL ANALYSIS - WEIGHTED MOVE GIVEN PRIOR MOVE ====
+# MODEL ANALYSIS - WEIGHTED MOVE GIVEN PREVIOUS MOVE ====
 
 fit_summary_weighted$model = factor(fit_summary_weighted$model,
                                     levels = c("move given previous move",
                                                paste("weighted move given previous move, trial memory:", round(MEMORY_TRIALS[1])),
                                                paste("weighted move given previous move, trial memory:", round(MEMORY_TRIALS[2])),
                                                paste("weighted move given previous move, trial memory:", round(MEMORY_TRIALS[3]))
+                                    )
+)
+# Format for figure
+fit_summary_weighted$model_str = str_wrap(fit_summary_weighted$model, 20)
+
+
+# View softmax param fits
+fit_summary_weighted %>% group_by(model) %>% summarize(mean(softmax))
+# Summary plot
+p1 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = softmax, color = model)) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1, color = "red") +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = paste("Prior multiplier:", PRIOR_MULTIPLIER),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+  )
+# Individual plot
+p2 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = softmax, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", size = 1, color = "red") +
+  labs(y = "Softmax parameter") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
+
+p2 + p1
+
+
+# View LL vals
+fit_summary_weighted %>% group_by(model) %>% summarize(mean(ll_per_round))
+# Summary plot
+p1 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
+  stat_summary(fun = "mean", geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x)),
+               size = 1.5) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
+  labs(y = "") +
+  scale_color_viridis(discrete = T,
+                      name = paste("Prior multiplier:", PRIOR_MULTIPLIER),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.spacing.y = unit(1.0, 'lines'),
+        legend.key.size = unit(3, 'lines')
+  )
+# Individual plot
+p2 = fit_summary_weighted %>%
+  ggplot(aes(x = model, y = ll_per_round, color = model)) +
+  geom_jitter(width = 0.1, height = 0, alpha = 0.25, size = 2) +
+  geom_hline(yintercept = -log(3), linetype = "dashed", size = 1, color = "red") +
+  labs(y = "LL (per round)") +
+  scale_color_viridis(discrete = T,
+                      name = element_blank(),
+                      labels = unique(fit_summary_weighted$model_str)) +
+  default_plot_theme +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        legend.position = "none"
+  )
+
+p2 + p1
+
+
+
+# MODEL FITS - WEIGHTED MOVE GIVEN OPPONENT PREVIOUS MOVE ====
+
+# Weighted move given *opponent* previous move
+# NB: this takes ~ 4mins.
+fit_summary_weighted = fit_summary_move_opponent_prev_move
+for (x in seq(length(PWR_SLOPES))) {
+  print(x)
+  dyad_data = count_opponent_prev_move_w(dyad_data, pwr_slope = PWR_SLOPES[1])
+  dyad_data = count_opponent_prev_move_current_move_w(dyad_data, pwr_slope = PWR_SLOPES[1])
+  dyad_data = apply_opponent_prev_move_count_w_prior(dyad_data, count_prior = PRIOR_TRIALS[1]*3) # NOTE prior here
+  dyad_data = apply_opponent_prev_move_current_move_count_w_prior(dyad_data, PRIOR_TRIALS[1])
+  # TODO same concerns as above re: correctness of this process
+  dyad_data = calculate_move_probs_move_opponent_prev_move_w(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities
+  dyad_data = calculate_opponent_move_probs(dyad_data)
+  dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+  fit_summary_move_opponent_prev_move_weighted = fit_model_to_subjects(dyad_data, paste("weighted move given opponent previous move, trial memory:", round(MEMORY_TRIALS[x])))
+  fit_summary_weighted = rbind(fit_summary_weighted, fit_summary_move_opponent_prev_move_weighted)
+}
+
+glimpse(fit_summary_weighted)
+unique(fit_summary_weighted$model)
+
+
+
+# MODEL ANALYSIS - WEIGHTED MOVE GIVEN OPPONENT PREVIOUS MOVE ====
+
+fit_summary_weighted$model = factor(fit_summary_weighted$model,
+                                    levels = c("move given opponent previous move",
+                                               paste("weighted move given opponent previous move, trial memory:", round(MEMORY_TRIALS[1])),
+                                               paste("weighted move given opponent previous move, trial memory:", round(MEMORY_TRIALS[2])),
+                                               paste("weighted move given opponent previous move, trial memory:", round(MEMORY_TRIALS[3]))
                                     )
 )
 # Format for figure
@@ -2272,7 +2546,7 @@ dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
 fit_summary_opponent_transitions_weighted = fit_model_to_subjects(dyad_data, model = "weighted opponent transition baserate")
 
 
-# Weighted move given prior move model
+# Weighted move given previous move model
 # NB: two different "count" calls here to determine base rates (and two prior augments)
 # TODO is this right?? Feels like things are getting crazy...
 # NOTE: for apples-to-apples comparison of softmax vals, needs to be applying priors equivalently to simpler models
@@ -2289,6 +2563,21 @@ fit_summary_move_prev_move_weighted = fit_model_to_subjects(dyad_data, model = "
 
 
 
+# Weighted move given opponent previous move model
+# NB: two different "count" calls here to determine base rates (and two prior augments)
+# TODO same concerns as above re: verification of this process
+dyad_data = count_opponent_prev_move_w(dyad_data, pwr_slope = PWR_SLOPES[1])
+dyad_data = count_opponent_prev_move_current_move_w(dyad_data, pwr_slope = PWR_SLOPES[1])
+dyad_data = apply_opponent_prev_move_count_w_prior(dyad_data, count_prior = PRIOR_TRIALS[1]*3) # NOTE prior here
+dyad_data = apply_opponent_prev_move_current_move_count_w_prior(dyad_data, PRIOR_TRIALS[1])
+# TODO same concerns as above re: correctness of this process
+dyad_data = calculate_move_probs_move_opponent_prev_move_w(dyad_data, MOVE_PROBABILITY_PRIOR) # Calculate move probabilities
+dyad_data = calculate_opponent_move_probs(dyad_data)
+dyad_data = calculate_move_ev(dyad_data, OUTCOME_VALS)
+fit_summary_move_opponent_prev_move_weighted = fit_model_to_subjects(dyad_data, model = "weighted move given opponent previous move")
+
+
+
 
 # MODEL ANALYSIS - WEIGHTED (ALL) ====
 # NB: this replicates the analysis of the unweighted models in `MODEL ANALYSIS - UNWEIGHTED (ALL)` above
@@ -2296,17 +2585,16 @@ fit_summary_move_prev_move_weighted = fit_model_to_subjects(dyad_data, model = "
 fit_summary_weighted = rbind(fit_summary_moves_weighted,
                              fit_summary_transitions_weighted,
                              fit_summary_opponent_transitions_weighted,
-                             fit_summary_move_prev_move_weighted
-                             # fit_summary_opponent_move_prev_move,
+                             fit_summary_move_prev_move_weighted,
+                             fit_summary_move_opponent_prev_move_weighted
                              # fit_summary_outcome_transition
                              )
 # Set order of conditions
 fit_summary_weighted$model = factor(fit_summary_weighted$model,
                                     levels = c("weighted move baserate",
                                                "weighted transition baserate", "weighted opponent transition baserate",
-                                               "weighted move given previous move"
-                                               # "move given opponent previous move",
-                                               # "outcome given previous transition"
+                                               "weighted move given previous move", "weighted move given opponent previous move"
+                                               # "weighted outcome given previous transition"
                                                )
 )
 # Format for figure

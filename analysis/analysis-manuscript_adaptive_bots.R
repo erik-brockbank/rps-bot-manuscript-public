@@ -300,7 +300,7 @@ for (strat in unique(data$bot_strategy)) {
 
 # ANALYSIS: Win count differentials ====
 
-# wcd_all = get_bot_strategy_win_count_differential(data)
+wcd_all = get_bot_strategy_win_count_differential(data)
 # # TODO move this into parent function above
 # wcd_all = wcd_all %>%
 #   rowwise() %>%
@@ -333,7 +333,7 @@ for (strat in unique(data$bot_strategy)) {
 #
 # # FIGURE: Win count differentials ====
 #
-# wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
+wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
 # # TODO move this into parent function being called above
 # wcd_summary = wcd_summary %>%
 #   rowwise() %>%
@@ -382,6 +382,46 @@ for (strat in unique(data$bot_strategy)) {
 #        )
 #
 #
+
+
+
+wcd_summary %>%
+  ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = bot_strategy)) +
+  geom_point(size = 6) +
+  geom_errorbar(
+    aes(ymin = mean_win_count_diff - se, ymax = mean_win_count_diff + se),
+    width = 0, linewidth = 1) +
+  geom_hline(yintercept = 0, linewidth = 1, linetype = "dashed", color = "black") +
+  scale_x_discrete(
+    name = element_blank(),
+    labels = element_blank()
+  ) +
+  scale_y_continuous(
+    name = "Bot win count differential",
+    breaks = seq(-50, 50, by = 25),
+    labels = as.character(seq(-50, 50, by = 25)),
+    limits = c(-55, 50)
+  ) +
+  scale_color_viridis(
+    discrete = T,
+    name = "Human pattern",
+    labels = STRATEGY_LABELS
+  ) +
+  default_plot_theme +
+  theme(
+    axis.ticks.x = element_blank(),
+    legend.position = "right",
+    legend.key = element_rect(colour = "transparent", fill = "transparent"),
+    legend.spacing.y = unit(0, "lines"),
+    legend.key.size = unit(3, "lines")
+  )
+
+
+ggsave(filename = "adaptive_bot_wcd.png",
+       path = IMG_PATH,
+       width = 10,
+       height = 6
+)
 
 
 # ANALYSIS: Win percentage ====
@@ -454,40 +494,42 @@ ggsave(filename = "adaptive_bot_win_pct.png",
 
 # Thesis figure
 
-wcd_summary %>%
-  ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = complexity)) +
-  geom_point(size = 6) +
-  geom_errorbar(
-    aes(ymin = lower_se, ymax = upper_se),
-    width = 0.1, size = 1) +
-  # geom_jitter(data = wcd_all, aes(x = bot_strategy, y = win_count_diff),
-  #             size = 2, alpha = 0.75, width = 0.25, height = 0) +
-  geom_hline(yintercept = 0, size = 2, linetype = "dashed", color = "red") +
-  # labs(x = "", y = "Bot win count differential") +
-  labs(x = "", y = "") +
-  # ggtitle("Adaptive bot performance against humans") +
-  scale_x_discrete(
-    name = element_blank(),
-    # labels = STRATEGY_LABELS) +
-    labels = c())+
-  scale_color_viridis(discrete = T) +
-  default_plot_theme +
-  theme(
-    plot.title = element_text(size = 32, face = "bold"),
-    axis.title.y = element_text(size = 24, face = "bold"),
-    # NB: axis title below is to give cushion for adding complexity labels in PPT
-    # axis.title.x = element_text(size = 64),
-    # axis.text.x = element_blank(),
-    axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.y = element_text(size = 14, face = "bold"),
-    legend.position = "right",
-    legend.title = element_text(size = 18, face = "bold"),
-    legend.text = element_text(size = 16),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-  )
+# wcd_summary %>%
+#   ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = complexity)) +
+#   geom_point(size = 6) +
+#   geom_errorbar(
+#     aes(ymin = lower_se, ymax = upper_se),
+#     width = 0.1, size = 1) +
+#   # geom_jitter(data = wcd_all, aes(x = bot_strategy, y = win_count_diff),
+#   #             size = 2, alpha = 0.75, width = 0.25, height = 0) +
+#   geom_hline(yintercept = 0, size = 2, linetype = "dashed", color = "red") +
+#   # labs(x = "", y = "Bot win count differential") +
+#   labs(x = "", y = "") +
+#   # ggtitle("Adaptive bot performance against humans") +
+#   scale_x_discrete(
+#     name = element_blank(),
+#     # labels = STRATEGY_LABELS) +
+#     labels = c())+
+#   scale_color_viridis(discrete = T) +
+#   default_plot_theme +
+#   theme(
+#     plot.title = element_text(size = 32, face = "bold"),
+#     axis.title.y = element_text(size = 24, face = "bold"),
+#     # NB: axis title below is to give cushion for adding complexity labels in PPT
+#     # axis.title.x = element_text(size = 64),
+#     # axis.text.x = element_blank(),
+#     axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
+#     axis.text.y = element_text(size = 14, face = "bold"),
+#     legend.position = "right",
+#     legend.title = element_text(size = 18, face = "bold"),
+#     legend.text = element_text(size = 16),
+#     panel.grid.major.x = element_blank(),
+#     panel.grid.minor.x = element_blank(),
+#   )
+#
+# ggsave("adaptive_bot_wcd.pdf")
+#
 
-ggsave("adaptive_bot_wcd.pdf")
 
 
 
@@ -661,18 +703,47 @@ plot(cournot_subjects_ig$information_gain,
 
 transition_ig_summary = get_ig_summary(transition_ig)
 
+STRATEGY_LOOKUP = list(
+  # "opponent_moves" = "Move distribution",
+  "opponent_prev_move" = "Previous move",
+  "bot_prev_move" = "Opponent previous move",
+  "opponent_bot_prev_move" = "Previous move, opponent previous move",
+  "opponent_prev_two_moves" = "Previous two moves",
+  # "bot_prev_two_moves" = "Bot previous two moves",
+  "opponent_transitions" = "Self- transition",
+  "opponent_courn_transitions" = "Opponent- transition",
+  "opponent_outcome_transitions" = "Previous outcome",
+  "opponent_outcome_prev_transition_dual" = "Previous outcome, previous transition"
+)
+
+label_width = 12 #
+
+STRATEGY_LABELS = c("opponent_moves" = str_wrap(STRATEGY_LOOKUP[["opponent_moves"]], label_width),
+                    "opponent_prev_move" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move"]], label_width),
+                    "bot_prev_move" = str_wrap(STRATEGY_LOOKUP[["bot_prev_move"]], label_width),
+                    "opponent_bot_prev_move" = str_wrap(STRATEGY_LOOKUP[["opponent_bot_prev_move"]], label_width),
+                    "opponent_prev_two_moves" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_two_moves"]], label_width),
+                    "bot_prev_two_moves" = str_wrap(STRATEGY_LOOKUP[["bot_prev_two_moves"]], label_width),
+                    "opponent_transitions" = str_wrap(STRATEGY_LOOKUP[["opponent_transitions"]], label_width),
+                    "opponent_courn_transitions" = str_wrap(STRATEGY_LOOKUP[["opponent_courn_transitions"]], label_width),
+                    "opponent_outcome_transitions" = str_wrap(STRATEGY_LOOKUP[["opponent_outcome_transitions"]], label_width),
+                    "opponent_outcome_prev_transition_dual" = str_wrap(STRATEGY_LOOKUP[["opponent_outcome_prev_transition_dual"]], label_width))
+
+
 p1 = transition_ig_summary %>%
   ggplot(aes(x = bot_strategy, y = mean_ig, color = bot_strategy)) +
   geom_point(size = 6) +
   geom_errorbar(
-    aes(ymin = ci_lower, ymax = ci_upper),
-    width = 0.1, size = 1) +
-  geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  labs(x = "", y = "Information gain") +
+    aes(ymin = mean_ig - se, ymax = mean_ig + se),
+    width = 0, linewidth = 1) +
+  geom_hline(yintercept = 0, linewidth = 1, linetype = "dashed", color = "black") +
   ggtitle("Self-transition dependency exhibited against each bot") +
   scale_x_discrete(
     name = element_blank(),
     labels = STRATEGY_LABELS) +
+  scale_y_continuous(
+    name = "Information gain"
+  ) +
   scale_color_viridis(discrete = T) +
   default_plot_theme +
   theme(
@@ -692,14 +763,16 @@ p2 = cournot_transition_ig_summary %>%
   ggplot(aes(x = bot_strategy, y = mean_ig, color = bot_strategy)) +
   geom_point(size = 6) +
   geom_errorbar(
-    aes(ymin = ci_lower, ymax = ci_upper),
-    width = 0.1, size = 1) +
-  geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  labs(x = "", y = "Information gain") +
+    aes(ymin = mean_ig - se, ymax = mean_ig + se),
+    width = 0, linewidth = 1) +
+  geom_hline(yintercept = 0, linewidth = 1, linetype = "dashed", color = "black") +
   ggtitle("Opponent-transition dependency exhibited against each bot") +
   scale_x_discrete(
     name = element_blank(),
     labels = STRATEGY_LABELS) +
+  scale_y_continuous(
+    name = "Information gain"
+  ) +
   scale_color_viridis(discrete = T) +
   default_plot_theme +
   theme(
@@ -714,13 +787,10 @@ p2 = cournot_transition_ig_summary %>%
 p3 = p1 / p2
 p3
 
-ggsave(filename = "v3_adaptive_bot_response_summary.png",
+ggsave(filename = "adaptive_bot_information_gain.png",
        path = IMG_PATH,
-       device = "png",
-       units = "in",
        width = 9,
        height = 12,
-       dpi = 500, # NB: this requires re-opening in preview to fix dpi
 )
 
 

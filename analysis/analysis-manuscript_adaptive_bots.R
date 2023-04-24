@@ -46,8 +46,8 @@ STRATEGY_LOOKUP = list(
   "opponent_bot_prev_move" = "Choice given player's prior choice & opponent's prior choice",
   "opponent_prev_two_moves" = "Choice given player's prior two choices",
   # "bot_prev_two_moves" = "Bot previous two moves",
-  "opponent_transitions" = "Self-transition baserate (+/-/0)",
-  "opponent_courn_transitions" = "Opponent-transition baserate (+/-/0)",
+  "opponent_transitions" = "Self-transition baserate (+/−/0)",
+  "opponent_courn_transitions" = "Opponent-transition baserate (+/−/0)",
   "opponent_outcome_transitions" = "Transition given prior outcome (W/L/T)",
   "opponent_outcome_prev_transition_dual" = "Transition given prior transition & prior outcome"
 )
@@ -98,6 +98,28 @@ get_bot_strategy_win_count_differential_summary = function(strategy_data) {
               se = sd(win_count_diff) / sqrt(n),
               lower_se = mean_win_count_diff - se,
               upper_se = mean_win_count_diff + se)
+}
+
+
+get_individual_win_pct = function(data, is_bot) {
+  data %>%
+    filter(is_bot == is_bot) %>%
+    group_by(bot_strategy, game_id, player_id) %>%
+    count(win = player_outcome == "win") %>%
+    mutate(total = sum(n),
+           win_pct = n / total) %>%
+    filter(win == TRUE)
+}
+
+
+
+get_condition_win_pct = function(subject_win_pct) {
+  subject_win_pct %>%
+    group_by(bot_strategy) %>%
+    summarize(subjects = n(),
+              mean_win_pct = mean(win_pct),
+              se_win_pct = sd(win_pct) / sqrt(subjects))
+
 }
 
 
@@ -366,6 +388,83 @@ ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
 
 
 
+# ANALYSIS: Win percentage ====
+
+bot_win_pct = get_individual_win_pct(data, is_bot = 1)
+condition_win_pct = get_condition_win_pct(bot_win_pct)
+
+# condition_win_pct = condition_win_pct %>%
+#   rowwise() %>%
+#   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
+#
+# condition_win_pct$complexity = factor(condition_win_pct$complexity,
+#                                       levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
+
+
+# How did bot win percentage values compare to chance?
+for (bot_strat in unique(bot_win_pct$bot_strategy)) {
+  print(STRATEGY_LOOKUP[bot_strat])
+  print(
+    t.test(x = bot_win_pct$win_pct[bot_win_pct$bot_strategy == bot_strat],
+           mu = (1/3))
+  )
+}
+
+
+# Number of participants with win percentage values < 1/3
+# Binomial tests
+for (bot_strat in unique(bot_win_pct$bot_strategy)) {
+  print(STRATEGY_LOOKUP[bot_strat])
+  print(
+    binom.test(
+      x = sum(bot_win_pct$win_pct[bot_win_pct$bot_strategy == bot_strat] < (1/3)),
+      n = length(bot_win_pct$win_pct[bot_win_pct$bot_strategy == bot_strat])
+    )
+  )
+}
+
+
+# FIGURE: Win percentages ====
+
+
+condition_win_pct %>%
+  ggplot(aes(x = bot_strategy, y = mean_win_pct, color = complexity)) +
+  geom_point(size = 6) +
+  geom_errorbar(
+    aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct),
+    width = 0, linewidth = 1) +
+  geom_hline(yintercept = 1/3, linewidth = 1, linetype = "dashed", color = "black") +
+  labs(x = "", y = "Win percentage") +
+  scale_x_discrete(
+    name = element_blank(),
+    labels = STRATEGY_LABELS) +
+  scale_color_viridis(discrete = T) +
+  default_plot_theme +
+  theme(
+    plot.title = element_text(size = 32, face = "bold"),
+    axis.title.y = element_text(size = 24, face = "bold"),
+    # NB: axis title below is to give cushion for adding complexity labels in PPT
+    # axis.title.x = element_text(size = 64),
+    # axis.text.x = element_blank(),
+    axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
+    axis.text.y = element_text(size = 14, face = "bold"),
+    legend.position = "bottom",
+    legend.title = element_text(size = 18, face = "bold"),
+    legend.text = element_text(size = 16)
+  )
+
+
+ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
+       path = IMG_PATH,
+       device = "png",
+       units = "in",
+       width = 8.5,
+       height = 6.5,
+       dpi = 500, # NB: this requires re-opening in preview to fix dpi
+)
+
+
+
 # Thesis figure
 
 wcd_summary %>%
@@ -408,7 +507,7 @@ ggsave("adaptive_bot_wcd.pdf")
 # ANALYSIS: Information gain for dependencies against bots ====
 
 # TODO move these above
-# Function to get marginal probability of each transition (+/-/0) for each participant
+# Function to get marginal probability of each transition (+/−/0) for each participant
 # NB: this is different from function of same name in original manuscript analysis
 get_player_transition_dist = function(data) {
   data %>%
@@ -429,7 +528,7 @@ get_player_transition_dist = function(data) {
 }
 
 
-# Function to get marginal probability of each cournot transition (+/-/0) for each participant
+# Function to get marginal probability of each cournot transition (+/−/0) for each participant
 # NB: this is different from function of same name in original manuscript analysis
 get_player_cournot_transition_dist = function(data) {
   data %>%

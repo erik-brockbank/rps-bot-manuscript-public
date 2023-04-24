@@ -330,6 +330,17 @@ subject_block_win_pct = get_subject_block_win_pct(bot_data, blocksize = 30)
 condition_block_win_pct = get_block_win_pct_summary(subject_block_win_pct)
 
 
+# How did bot win percentage values compare to chance?
+for (bot_strat in unique(subject_win_pct$bot_strategy)) {
+  print(STRATEGY_LOOKUP[bot_strat])
+  print(
+    t.test(x = subject_win_pct$win_pct[subject_win_pct$bot_strategy == bot_strat],
+           mu = (1/3))
+  )
+}
+
+
+
 # FIGURE: Win percentages ====
 
 # > Overall win percentage ====

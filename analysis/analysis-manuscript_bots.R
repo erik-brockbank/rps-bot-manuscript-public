@@ -401,7 +401,7 @@ win_pct_bins = condition_block_win_pct %>%
   scale_x_continuous(
     name = "",
     labels = block_labels,
-    breaks = seq(1:10)) +
+    breaks = seq(0, 9)) +
   scale_y_continuous(
     name = "",
     breaks = seq(0.3, 0.9, by = 0.1),
@@ -423,7 +423,7 @@ win_pct_bins
 
 # > Combined figure ====
 win_pct_overall + win_pct_bins +
-  plot_layout(widths = c(1, 2))
+  plot_layout(widths = c(1.5, 2.5))
 
 ggsave(
   filename = "stable_bot_win_pct.png",

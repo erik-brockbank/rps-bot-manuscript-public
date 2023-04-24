@@ -199,7 +199,7 @@ get_bot_prev_outcome_win_pct_summary = function(bot_loss_prev_outcome) {
 
 # GRAPHING STYLE FUNCTIONS ====
 
-individ_plot_theme = theme(
+default_plot_theme = theme(
   # text
   plot.title = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
   axis.title.y = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
@@ -242,7 +242,7 @@ plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, xlabel) 
     ) +
     scale_fill_viridis_d(begin = 0.25) +
     ggtitle(STRATEGY_LOOKUP[[strategy]]) +
-    individ_plot_theme +
+    default_plot_theme +
     theme(
       axis.ticks.x = element_blank(),
       axis.text.x = element_text(face = "bold", size = 20, family = "Avenir", color = "black"),
@@ -270,7 +270,7 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, xlabel)
     ) +
     scale_fill_viridis_d(begin = 0.75) +
     ggtitle(STRATEGY_LOOKUP[[strategy]]) +
-    individ_plot_theme +
+    default_plot_theme +
     theme(
       axis.ticks.x = element_blank(),
       axis.text.x = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
@@ -355,7 +355,7 @@ win_pct_overall = condition_win_pct %>%
   scale_color_viridis(discrete = TRUE,
                       name = element_blank()) +
   scale_y_continuous(
-    name = "Win percentage",
+    name = "Human win percentage",
     breaks = seq(0.3, 0.9, by = 0.1),
     labels = as.character(seq(0.3, 0.9, by = 0.1)),
     limits = c(0.3, 0.9)
@@ -364,7 +364,7 @@ win_pct_overall = condition_win_pct %>%
     name = "",
     labels = element_blank()
   ) +
-  individ_plot_theme +
+  default_plot_theme +
   theme(
     # remove X axis text and ticks
     axis.text.x = element_blank(),
@@ -396,7 +396,7 @@ win_pct_bins = condition_block_win_pct %>%
   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
   ggtitle("By Round") +
   scale_color_viridis(discrete = T,
-                      name = "Condition",
+                      name = "Bot pattern",
                       labels = strategy_labels) +
   scale_x_continuous(
     name = "",
@@ -408,7 +408,7 @@ win_pct_bins = condition_block_win_pct %>%
     labels = c("", "", "", "", "", "", ""),
     limits = c(0.3, 0.9)
   ) +
-  individ_plot_theme +
+  default_plot_theme +
   theme(
     # Make X axis text sideways
     axis.text.x = element_text(face = "bold", size = 14, angle = 45, vjust = 0.5, family = "Avenir", color = "black"),
@@ -426,7 +426,7 @@ win_pct_overall + win_pct_bins +
   plot_layout(widths = c(1, 2))
 
 ggsave(
-  filename = "bot_win_rates_win_trajectory.png",
+  filename = "stable_bot_win_pct.png",
   path = IMG_PATH,
   width = 10, height = 6.5
 )
@@ -596,7 +596,7 @@ prev_move_positive_plot + prev_move_negative_plot +
 
 
 ggsave(
-  filename = "bot_strategy_conditional_win_pct.png",
+  filename = "stable_bot_win_pct_conditional.png",
   path = IMG_PATH,
   width = 11.5, height = 13
 )

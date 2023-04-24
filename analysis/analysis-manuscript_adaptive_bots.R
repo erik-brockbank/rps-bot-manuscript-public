@@ -41,27 +41,27 @@ STRATEGY_LEVELS = c(
 
 STRATEGY_LOOKUP = list(
   # "opponent_moves" = "Move distribution",
-  "opponent_prev_move" = "Choice given player's prior choice",
-  "bot_prev_move" = "Choice given opponent's prior choice",
-  "opponent_bot_prev_move" = "Choice given player's prior choice & opponent's prior choice",
-  "opponent_prev_two_moves" = "Choice given player's prior two choices",
+  "opponent_prev_move" = "Previous move",
+  "bot_prev_move" = "Opponent previous move",
+  "opponent_bot_prev_move" = "Previous move, opponent previous move",
+  "opponent_prev_two_moves" = "Previous two moves",
   # "bot_prev_two_moves" = "Bot previous two moves",
-  "opponent_transitions" = "Self-transition baserate (+/−/0)",
-  "opponent_courn_transitions" = "Opponent-transition baserate (+/−/0)",
-  "opponent_outcome_transitions" = "Transition given prior outcome (W/L/T)",
-  "opponent_outcome_prev_transition_dual" = "Transition given prior transition & prior outcome"
+  "opponent_transitions" = "Self-transition",
+  "opponent_courn_transitions" = "Opponent-transition",
+  "opponent_outcome_transitions" = "Previous outcome",
+  "opponent_outcome_prev_transition_dual" = "Previous outcome, previous transition"
 )
 
-COMPLEXITY_LOOKUP = c(
-  "opponent_transitions" = "3-cell memory",
-  "opponent_courn_transitions" = "3-cell memory",
-  "opponent_prev_move" = "9-cell memory",
-  "bot_prev_move" = "9-cell memory",
-  "opponent_outcome_transitions" = "9-cell memory",
-  "opponent_bot_prev_move" = "27-cell memory",
-  "opponent_prev_two_moves" = "27-cell memory",
-  "opponent_outcome_prev_transition_dual" = "27-cell memory"
-)
+# COMPLEXITY_LOOKUP = c(
+#   "opponent_transitions" = "3-cell memory",
+#   "opponent_courn_transitions" = "3-cell memory",
+#   "opponent_prev_move" = "9-cell memory",
+#   "bot_prev_move" = "9-cell memory",
+#   "opponent_outcome_transitions" = "9-cell memory",
+#   "opponent_bot_prev_move" = "27-cell memory",
+#   "opponent_prev_two_moves" = "27-cell memory",
+#   "opponent_outcome_prev_transition_dual" = "27-cell memory"
+# )
 
 # NB: this is player move in rows, opponent move in columns
 OUTCOME_MATRIX = matrix(c(0, -1, 1, 1, 0, -1, -1, 1, 0), nrow = 3, byrow = T,
@@ -101,9 +101,9 @@ get_bot_strategy_win_count_differential_summary = function(strategy_data) {
 }
 
 
-get_individual_win_pct = function(data, is_bot) {
+get_bot_win_pct = function(data) {
   data %>%
-    filter(is_bot == is_bot) %>%
+    filter(is_bot == 1) %>%
     group_by(bot_strategy, game_id, player_id) %>%
     count(win = player_outcome == "win") %>%
     mutate(total = sum(n),
@@ -113,8 +113,8 @@ get_individual_win_pct = function(data, is_bot) {
 
 
 
-get_condition_win_pct = function(subject_win_pct) {
-  subject_win_pct %>%
+get_condition_win_pct = function(individual_win_pct) {
+  individual_win_pct %>%
     group_by(bot_strategy) %>%
     summarize(subjects = n(),
               mean_win_pct = mean(win_pct),
@@ -126,31 +126,27 @@ get_condition_win_pct = function(subject_win_pct) {
 # GRAPHING STYLE FUNCTIONS ====
 
 default_plot_theme = theme(
-  # titles
-  plot.title = element_text(face = "bold", size = 20),
-  axis.title.y = element_text(face = "bold", size = 16),
-  axis.title.x = element_text(face = "bold", size = 16),
-  legend.title = element_text(face = "bold", size = 16),
-  # axis text
-  axis.text.y = element_text(size = 14, face = "bold"),
-  axis.text.x = element_text(size = 14, angle = 45, vjust = 0.5, face = "bold"),
-  # legend text
-  legend.text = element_text(size = 16, face = "bold"),
-  # facet text
-  strip.text = element_text(size = 12),
+  # text
+  plot.title = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
+  axis.title.y = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
+  axis.title.x = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(t = 0.5, unit = "line")),
+  axis.text.y = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
+  axis.text.x = element_text(face = "bold", size = 14, family = "Avenir", color = "black"),
+  legend.title = element_text(face = "bold", size = 20, family = "Avenir", color = "black"),
+  legend.text = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
   # backgrounds, lines
   panel.background = element_blank(),
   strip.background = element_blank(),
-
-  panel.grid = element_line(color = "gray"),
+  panel.grid.major.x = element_blank(),
+  panel.grid.minor.x = element_blank(),
+  panel.grid.major.y = element_blank(),
+  panel.grid.minor.y = element_blank(),
   axis.line = element_line(color = "black"),
-  # positioning
-  legend.position = "bottom",
-  legend.key = element_rect(colour = "transparent", fill = "transparent")
+  axis.ticks = element_line(color = "black")
 )
 
 # label_width = 48 # default: 10
-label_width = 10 # default: 10
+label_width = 22 # default: 10
 
 STRATEGY_LABELS = c("opponent_moves" = str_wrap(STRATEGY_LOOKUP[["opponent_moves"]], label_width),
                     "opponent_prev_move" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move"]], label_width),
@@ -304,93 +300,93 @@ for (strat in unique(data$bot_strategy)) {
 
 # ANALYSIS: Win count differentials ====
 
-wcd_all = get_bot_strategy_win_count_differential(data)
-# TODO move this into parent function above
-wcd_all = wcd_all %>%
-  rowwise() %>%
-  mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
-wcd_all$complexity = factor(wcd_all$complexity,
-                            levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
-
-
-# How did bot WCD values compare to chance?
-for (bot_strat in unique(wcd_all$bot_strategy)) {
-  print(STRATEGY_LOOKUP[bot_strat])
-  print(
-    t.test(x = wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
-  )
-}
-
-# Number of participants with WCD values < 0
-# Binomial tests
-for (bot_strat in unique(wcd_all$bot_strategy)) {
-  print(STRATEGY_LOOKUP[bot_strat])
-  print(
-    binom.test(
-      x = sum(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat] < 0),
-      n = length(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
-    )
-  )
-}
-
-
-
-# FIGURE: Win count differentials ====
-
-wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
-# TODO move this into parent function being called above
-wcd_summary = wcd_summary %>%
-  rowwise() %>%
-  mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
-wcd_summary$complexity = factor(wcd_summary$complexity,
-                                levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
-
-
-wcd_summary %>%
-  ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = complexity)) +
-  geom_point(size = 6) +
-  geom_errorbar(
-    aes(ymin = lower_se, ymax = upper_se),
-    width = 0.1, size = 1) +
-  # geom_jitter(data = wcd_all, aes(x = bot_strategy, y = win_count_diff),
-  #             size = 2, alpha = 0.75, width = 0.25, height = 0) +
-  geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-  labs(x = "", y = "Bot win count differential") +
-  # ggtitle("Adaptive bot performance against humans") +
-  scale_x_discrete(
-    name = element_blank(),
-    labels = STRATEGY_LABELS) +
-  scale_color_viridis(discrete = T) +
-  default_plot_theme +
-  theme(
-    plot.title = element_text(size = 32, face = "bold"),
-    axis.title.y = element_text(size = 24, face = "bold"),
-    # NB: axis title below is to give cushion for adding complexity labels in PPT
-    # axis.title.x = element_text(size = 64),
-    # axis.text.x = element_blank(),
-    axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.y = element_text(size = 14, face = "bold"),
-    legend.position = "bottom",
-    legend.title = element_text(size = 18, face = "bold"),
-    legend.text = element_text(size = 16)
-  )
-
-
-ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
-       path = IMG_PATH,
-       device = "png",
-       units = "in",
-       width = 8.5,
-       height = 6.5,
-       dpi = 500, # NB: this requires re-opening in preview to fix dpi
-       )
-
-
+# wcd_all = get_bot_strategy_win_count_differential(data)
+# # TODO move this into parent function above
+# wcd_all = wcd_all %>%
+#   rowwise() %>%
+#   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
+# wcd_all$complexity = factor(wcd_all$complexity,
+#                             levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
+#
+#
+# # How did bot WCD values compare to chance?
+# for (bot_strat in unique(wcd_all$bot_strategy)) {
+#   print(STRATEGY_LOOKUP[bot_strat])
+#   print(
+#     t.test(x = wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
+#   )
+# }
+#
+# # Number of participants with WCD values < 0
+# # Binomial tests
+# for (bot_strat in unique(wcd_all$bot_strategy)) {
+#   print(STRATEGY_LOOKUP[bot_strat])
+#   print(
+#     binom.test(
+#       x = sum(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat] < 0),
+#       n = length(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
+#     )
+#   )
+# }
+#
+#
+#
+# # FIGURE: Win count differentials ====
+#
+# wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
+# # TODO move this into parent function being called above
+# wcd_summary = wcd_summary %>%
+#   rowwise() %>%
+#   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
+# wcd_summary$complexity = factor(wcd_summary$complexity,
+#                                 levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
+#
+#
+# wcd_summary %>%
+#   ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = complexity)) +
+#   geom_point(size = 6) +
+#   geom_errorbar(
+#     aes(ymin = lower_se, ymax = upper_se),
+#     width = 0.1, size = 1) +
+#   # geom_jitter(data = wcd_all, aes(x = bot_strategy, y = win_count_diff),
+#   #             size = 2, alpha = 0.75, width = 0.25, height = 0) +
+#   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
+#   labs(x = "", y = "Bot win count differential") +
+#   # ggtitle("Adaptive bot performance against humans") +
+#   scale_x_discrete(
+#     name = element_blank(),
+#     labels = STRATEGY_LABELS) +
+#   scale_color_viridis(discrete = T) +
+#   default_plot_theme +
+#   theme(
+#     plot.title = element_text(size = 32, face = "bold"),
+#     axis.title.y = element_text(size = 24, face = "bold"),
+#     # NB: axis title below is to give cushion for adding complexity labels in PPT
+#     # axis.title.x = element_text(size = 64),
+#     # axis.text.x = element_blank(),
+#     axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
+#     axis.text.y = element_text(size = 14, face = "bold"),
+#     legend.position = "bottom",
+#     legend.title = element_text(size = 18, face = "bold"),
+#     legend.text = element_text(size = 16)
+#   )
+#
+#
+# ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
+#        path = IMG_PATH,
+#        device = "png",
+#        units = "in",
+#        width = 8.5,
+#        height = 6.5,
+#        dpi = 500, # NB: this requires re-opening in preview to fix dpi
+#        )
+#
+#
 
 
 # ANALYSIS: Win percentage ====
 
-bot_win_pct = get_individual_win_pct(data, is_bot = 1)
+bot_win_pct = get_bot_win_pct(data)
 condition_win_pct = get_condition_win_pct(bot_win_pct)
 
 # condition_win_pct = condition_win_pct %>%
@@ -411,56 +407,47 @@ for (bot_strat in unique(bot_win_pct$bot_strategy)) {
 }
 
 
-# Number of participants with win percentage values < 1/3
-# Binomial tests
-for (bot_strat in unique(bot_win_pct$bot_strategy)) {
-  print(STRATEGY_LOOKUP[bot_strat])
-  print(
-    binom.test(
-      x = sum(bot_win_pct$win_pct[bot_win_pct$bot_strategy == bot_strat] < (1/3)),
-      n = length(bot_win_pct$win_pct[bot_win_pct$bot_strategy == bot_strat])
-    )
-  )
-}
-
 
 # FIGURE: Win percentages ====
 
 
 condition_win_pct %>%
-  ggplot(aes(x = bot_strategy, y = mean_win_pct, color = complexity)) +
+  ggplot(aes(x = bot_strategy, y = mean_win_pct, color = bot_strategy)) +
   geom_point(size = 6) +
   geom_errorbar(
     aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct),
     width = 0, linewidth = 1) +
   geom_hline(yintercept = 1/3, linewidth = 1, linetype = "dashed", color = "black") +
-  labs(x = "", y = "Win percentage") +
   scale_x_discrete(
     name = element_blank(),
-    labels = STRATEGY_LABELS) +
-  scale_color_viridis(discrete = T) +
+    labels = element_blank()
+  ) +
+  scale_y_continuous(
+    name = "Bot win percentage",
+    breaks = seq(0.25, 0.5, by = 0.05),
+    labels = as.character(seq(0.25, 0.5, by = 0.05)),
+    limits = c(0.28, 0.45)
+  ) +
+  scale_color_viridis(
+    discrete = T,
+    name = "Human pattern",
+    labels = STRATEGY_LABELS
+  ) +
   default_plot_theme +
   theme(
-    plot.title = element_text(size = 32, face = "bold"),
-    axis.title.y = element_text(size = 24, face = "bold"),
-    # NB: axis title below is to give cushion for adding complexity labels in PPT
-    # axis.title.x = element_text(size = 64),
-    # axis.text.x = element_blank(),
-    axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.y = element_text(size = 14, face = "bold"),
-    legend.position = "bottom",
-    legend.title = element_text(size = 18, face = "bold"),
-    legend.text = element_text(size = 16)
+    axis.ticks.x = element_blank(),
+    legend.position = "right",
+    legend.key = element_rect(colour = "transparent", fill = "transparent"),
+    legend.spacing.y = unit(0, "lines"),
+    legend.key.size = unit(3, "lines")
   )
 
 
-ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
+
+ggsave(filename = "adaptive_bot_win_pct.png",
        path = IMG_PATH,
-       device = "png",
-       units = "in",
-       width = 8.5,
-       height = 6.5,
-       dpi = 500, # NB: this requires re-opening in preview to fix dpi
+       width = 10,
+       height = 6
 )
 
 

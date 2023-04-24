@@ -226,7 +226,7 @@ plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, xlabel) 
     filter(bot_strategy == strategy) %>%
     ggplot(aes(x = prev_move, y = mean_player_win_pct, fill = strategy)) +
     geom_bar(stat = "identity", alpha = 0.75, width = 0.75) +
-    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0, size = 1, color = "black") +
+    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0, linewidth = 1, color = "black") +
     geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
     geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
     scale_y_continuous(
@@ -254,7 +254,7 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, xlabel)
     filter(bot_strategy == strategy) %>%
     ggplot(aes(x = prev_outcome, y = mean_player_win_pct, fill = strategy)) +
     geom_bar(stat = "identity", alpha = 0.75, width = 0.75) +
-    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0, size = 1, color = "black") +
+    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0, linewidth = 1, color = "black") +
     geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
     geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
     scale_y_continuous(
@@ -333,7 +333,7 @@ win_pct_overall = condition_win_pct %>%
   ggplot(aes(x = bot_strategy, y = mean_win_pct, color = bot_strategy)) +
   geom_point(size = 6) +
   geom_errorbar(aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct),
-                width = 0, size = 1) +
+                width = 0, linewidth = 1) +
   geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
   ggtitle("Aggregate") +
@@ -373,10 +373,10 @@ strategy_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_
 block_labels = c("0" = "30", "1" = "60", "2" = "90", "3" = "120", "4" = "150",
                  "5" = "180", "6" = "210", "7" = "240", "8" = "270", "9" = "300")
 
-win_pct_bins = block_data_summary %>%
+win_pct_bins = condition_block_win_pct %>%
   ggplot(aes(x = round_block, y = mean_win_pct, color = bot_strategy)) +
   geom_point(size = 6) +
-  geom_errorbar(aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct), size = 1, width = 0) +
+  geom_errorbar(aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct), linewidth = 1, width = 0) +
   geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
   ggtitle("By Round") +

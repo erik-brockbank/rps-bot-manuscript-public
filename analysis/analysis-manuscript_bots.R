@@ -17,7 +17,9 @@ library(pwr)
 
 # GLOBALS ====
 
-DATA_FILE = "../data/rps_v2_data.csv" # name of file containing full dataset for all rounds
+DATA_PATH = "../data" # pathway to data file
+DATA_FILE = "rps_v2_data.csv" # name of file containing full dataset for all rounds
+IMG_PATH = "../figures" # pathway to "figures" folder
 
 GAME_ROUNDS = 300
 
@@ -281,7 +283,9 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, xlabel)
 
 # INITIALIZATION ====
 
-bot_data = read_bot_data(DATA_FILE, STRATEGY_LEVELS, GAME_ROUNDS)
+bot_data = read_bot_data(paste(DATA_PATH, DATA_FILE, sep = "/"),
+                         STRATEGY_LEVELS,
+                         GAME_ROUNDS)
 
 
 # SUMMARY: Participants, completion time ====
@@ -412,7 +416,7 @@ win_pct_overall + win_pct_bins +
 
 ggsave(
   filename = "bot_win_rates_win_trajectory.png",
-  path = "../figures",
+  path = IMG_PATH,
   width = 10, height = 6.5
 )
 
@@ -582,7 +586,7 @@ prev_move_positive_plot + prev_move_negative_plot +
 
 ggsave(
   filename = "bot_strategy_conditional_win_pct.png",
-  path = "../figures",
+  path = IMG_PATH,
   width = 11.5, height = 13
 )
 

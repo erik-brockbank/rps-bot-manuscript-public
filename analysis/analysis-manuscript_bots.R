@@ -7,7 +7,7 @@
 # SETUP ====
 
 rm(list = ls())
-setwd("/Users/erikbrockbank/web/vullab/rps/analysis")
+setwd("/Users/erikbrockbank/web/vullab/rps-bot-manuscript-public/analysis")
 
 library(tidyverse)
 library(viridis)
@@ -17,7 +17,7 @@ library(pwr)
 
 # GLOBALS ====
 
-DATA_FILE = "rps_v2_data.csv" # name of file containing full dataset for all rounds
+DATA_FILE = "../data/rps_v2_data.csv" # name of file containing full dataset for all rounds
 
 GAME_ROUNDS = 300
 
@@ -27,18 +27,12 @@ STRATEGY_LEVELS = c("prev_move_positive", "prev_move_negative",
                     "win_nil_lose_positive", "win_positive_lose_negative",
                     "outcome_transition_dual_dependency")
 STRATEGY_LOOKUP = list("prev_move_positive" = "Previous move (+)",
-                       "prev_move_negative" = "Previous move (-)",
+                       "prev_move_negative" = "Previous move (−)",
                        "opponent_prev_move_positive" = "Opponent previous move (+)",
                        "opponent_prev_move_nil" = "Opponent previous move (0)",
-                       "win_nil_lose_positive" = "Win-stay-lose-positive",
-                       "win_positive_lose_negative" = "Win-positive-lose-negative",
+                       "win_nil_lose_positive" = "Win-stay lose-positive",
+                       "win_positive_lose_negative" = "Win-positive lose-negative",
                        "outcome_transition_dual_dependency" = "Previous outcome, previous transition")
-
-TRANSITION_STRATEGIES = c("prev_move_positive", "prev_move_negative",
-                          "opponent_prev_move_positive", "opponent_prev_move_nil")
-OUTCOME_STRATEGIES = c("win_nil_lose_positive", "win_positive_lose_negative")
-DUAL_DEPENDENCY_STRATEGIES = c("outcome_transition_dual_dependency")
-
 
 
 # DATA PROCESSING FUNCTIONS ====
@@ -98,34 +92,15 @@ read_bot_data = function(filename, strategies, game_rounds) {
 
 # ANALYSIS FUNCTIONS ====
 
-get_bot_strategy_win_count_differential = function(data) {
-  win_diff = data %>%
-    group_by(bot_strategy, game_id, player_id, is_bot) %>%
-    count(win_count = player_outcome == "win") %>%
-    filter(win_count == TRUE) %>%
-    group_by(bot_strategy, game_id) %>%
-    summarize(win_count_diff = n[is_bot == 0] - n[is_bot == 1]) %>%
-    as.data.frame()
-  return(win_diff)
-}
-
-get_bot_strategy_win_count_differential_summary = function(strategy_data) {
-  strategy_data %>%
-    group_by(bot_strategy) %>%
-    summarize(mean_win_count_diff = mean(win_count_diff),
-              n = n(),
-              se = sd(win_count_diff) / sqrt(n),
-              lower_se = mean_win_count_diff - se,
-              upper_se = mean_win_count_diff + se)
-}
 
 # Divide each subject's trials into blocks of size blocksize (e.g. 10 trials)
 # then get each subject's win percent in each block
-get_subject_block_data = function(data, blocksize) {
+get_subject_block_win_pct = function(data, blocksize) {
   data %>%
     filter(is_bot == 0) %>%
     group_by(bot_strategy, round_index) %>%
-    mutate(round_block = ceiling(round_index / blocksize)) %>%
+    # NB: round_block is 0-indexed
+    mutate(round_block = ceiling(round_index / blocksize) - 1) %>%
     select(bot_strategy, round_index, game_id, player_id, player_outcome, round_block) %>%
     group_by(bot_strategy, game_id, player_id, round_block) %>%
     count(win = player_outcome == "win") %>%
@@ -135,14 +110,12 @@ get_subject_block_data = function(data, blocksize) {
 }
 
 # Take in subject block win percent (calculated above) and summarize by bot strategy across subjects
-get_block_data_summary = function(subject_block_data) {
+get_block_win_pct_summary = function(subject_block_data) {
   subject_block_data %>%
     group_by(bot_strategy, round_block) %>%
     summarize(subjects = n(),
               mean_win_pct = mean(win_pct),
-              se_win_pct = sd(win_pct) / sqrt(subjects),
-              lower_ci = mean_win_pct - se_win_pct,
-              upper_ci = mean_win_pct + se_win_pct)
+              se_win_pct = sd(win_pct) / sqrt(subjects))
 }
 
 # Get loss percent for each bot dependent on their previous move
@@ -225,122 +198,54 @@ get_bot_prev_outcome_win_pct_summary = function(bot_loss_prev_outcome) {
 # GRAPHING STYLE FUNCTIONS ====
 
 individ_plot_theme = theme(
-  # titles
-  plot.title = element_text(face = "bold", size = 24),
-  axis.title.y = element_text(face = "bold", size = 20),
-  axis.title.x = element_text(face = "bold", size = 20),
-  legend.title = element_text(face = "bold", size = 16),
-  # axis text
-  axis.text.y = element_text(size = 14, face = "bold"),
-  axis.text.x = element_text(size = 14, angle = 45, vjust = 0.5, face = "bold"),
-  # legend text
-  legend.text = element_text(size = 16, face = "bold"),
-  # facet text
-  strip.text = element_text(size = 12),
+  # text
+  plot.title = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
+  axis.title.y = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
+  axis.title.x = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(t = 0.5, unit = "line")),
+  axis.text.y = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
+  axis.text.x = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
+  legend.title = element_text(face = "bold", size = 20, family = "Avenir", color = "black"),
+  legend.text = element_text(face = "bold", size = 14, family = "Avenir", color = "black"),
   # backgrounds, lines
   panel.background = element_blank(),
   strip.background = element_blank(),
-
-  panel.grid = element_line(color = "gray"),
+  panel.grid.major.x = element_blank(),
+  panel.grid.minor.x = element_blank(),
+  panel.grid.major.y = element_blank(),
+  panel.grid.minor.y = element_blank(),
   axis.line = element_line(color = "black"),
-  # positioning
-  legend.position = "bottom",
-  legend.key = element_rect(colour = "transparent", fill = "transparent")
+  axis.ticks = element_line(color = "black")
 )
 
 
 # GRAPHING FUNCTIONS ====
-
-# Plot mean + SEM of each strategy
-plot_bot_strategy_win_count_differential_summary = function(wcd_summary) {
-  label_width = 10
-  summary_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_positive"]], label_width),
-                     "prev_move_negative" = str_wrap(STRATEGY_LOOKUP[["prev_move_negative"]], label_width),
-                     "opponent_prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_positive"]], label_width),
-                     "opponent_prev_move_nil" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_nil"]], label_width),
-                     "win_nil_lose_positive" = str_wrap(STRATEGY_LOOKUP[["win_nil_lose_positive"]], label_width),
-                     "win_positive_lose_negative" = str_wrap(STRATEGY_LOOKUP[["win_positive_lose_negative"]], label_width),
-                     "outcome_transition_dual_dependency" = str_wrap(STRATEGY_LOOKUP[["outcome_transition_dual_dependency"]], label_width))
-
-  wcd_summary %>%
-    ggplot(aes(x = bot_strategy, y = mean_win_count_diff)) +
-    geom_point(aes(color = bot_strategy),
-               size = 6) +
-    geom_errorbar(aes(color = bot_strategy, ymin = lower_se, ymax = upper_se),
-                  width = 0.25, size = 1) +
-    geom_hline(yintercept = 0, size = 1, linetype = "dashed", color = "red") +
-    labs(x = "", y = "Mean win count differential") +
-    #ggtitle("Win count differential across bot strategies") +
-    ggtitle("Aggregate") +
-    #scale_x_discrete(labels = summary_labels) +
-    scale_color_viridis(discrete = TRUE,
-                        name = element_blank()) +
-    individ_plot_theme +
-    theme(
-      # plot.title = element_text(size = 32, face = "bold"),
-      axis.title.y = element_text(size = 24, face = "bold"),
-      # axis.text.x = element_text(size = 20, face = "bold", angle = 0, vjust = 1),
-      # axis.text.x = element_text(size = 20, face = "bold", angle = 0, vjust = 1),
-      axis.text.x = element_blank(),
-      # axis.text.y = element_text(face = "bold", size = 20),
-      legend.position = "none"
-    )
-}
-
-# Plot average of each participant's win percent in blocks of trials by strategy
-plot_bot_strategy_win_pct_by_block = function(block_data_summary) {
-  label_width = 12
-  strategy_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_positive"]], label_width),
-                      "prev_move_negative" = str_wrap(STRATEGY_LOOKUP[["prev_move_negative"]], label_width),
-                      "opponent_prev_move_nil" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_nil"]], label_width),
-                      "opponent_prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_positive"]], label_width),
-                      "win_nil_lose_positive" = str_wrap(STRATEGY_LOOKUP[["win_nil_lose_positive"]], label_width),
-                      "win_positive_lose_negative" = str_wrap(STRATEGY_LOOKUP[["win_positive_lose_negative"]], label_width),
-                      "outcome_transition_dual_dependency" = str_wrap(STRATEGY_LOOKUP[["outcome_transition_dual_dependency"]], label_width))
-
-  block_labels = c("1" = "30", "2" = "60", "3" = "90", "4" = "120", "5" = "150",
-                   "6" = "180", "7" = "210", "8" = "240", "9" = "270", "10" = "300")
-
-  block_data_summary %>%
-    ggplot(aes(x = round_block, y = mean_win_pct, color = bot_strategy)) +
-    geom_point(size = 6, alpha = 0.75) +
-    geom_errorbar(aes(ymin = lower_ci, ymax = upper_ci), size = 1, width = 0.25, alpha = 0.75) +
-    geom_hline(yintercept = 1 / 3, linetype = "dashed", color = "red", size = 1) +
-    labs(x = "Game round", y = "Mean win percentage") +
-    # ggtitle("Participant win percentage against bot strategies") +
-    ggtitle("By Round") +
-    scale_color_viridis(discrete = T,
-                        name = element_blank(),
-                        labels = strategy_labels) +
-    scale_x_continuous(labels = block_labels, breaks = seq(1:10)) +
-    individ_plot_theme +
-    theme(#axis.text.x = element_blank(),
-      axis.title.y = element_text(size = 24, face = "bold"),
-      legend.text = element_text(face = "bold", size = 14),
-      legend.position = "right",
-      legend.spacing.y = unit(1.0, 'lines'),
-      #legend.key = element_rect(size = 2),
-      legend.key.size = unit(4.75, 'lines'))
-}
 
 # Plot average win percent based on previous move dependency
 plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, xlabel) {
   bot_loss_summary_prev_move %>%
     filter(bot_strategy == strategy) %>%
     ggplot(aes(x = prev_move, y = mean_player_win_pct, fill = strategy)) +
-    # geom_bar(stat = "identity", alpha = 0.5, color = "grey50", fill = "steelblue") +
-    geom_bar(stat = "identity", alpha = 0.5) +
-    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0.5, size = 1, color = "midnightblue") +
-    geom_hline(yintercept = 1 / 3, linetype = "dashed", color = "red", size = 1) +
-    scale_y_continuous(labels = seq(0, 0.9, by = 0.3),
-                       breaks = seq(0, 0.9, by = 0.3),
-                       limits = c(0, 0.9)) +
+    geom_bar(stat = "identity", alpha = 0.75, width = 0.75) +
+    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0, size = 1, color = "black") +
+    geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
+    geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
+    scale_y_continuous(
+      name = "Win percentage",
+      breaks = seq(0, 0.9, by = 0.3),
+      labels = as.character(seq(0, 0.9, by = 0.3)),
+      limits = c(0, 0.9)
+    ) +
+    scale_x_discrete(
+      name = xlabel
+    ) +
     scale_fill_viridis_d(begin = 0.25) +
-    labs(x = xlabel, y = "Mean win percentage") +
     ggtitle(STRATEGY_LOOKUP[[strategy]]) +
     individ_plot_theme +
-    theme(legend.position = "none",
-          axis.text.x = element_text(angle = 0, vjust = 1))
+    theme(
+      axis.ticks.x = element_blank(),
+      axis.text.x = element_text(face = "bold", size = 20, family = "Avenir", color = "black"),
+      legend.position = "none"
+    )
 }
 
 # Plot average win percent based on outcome dependency
@@ -348,29 +253,38 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, xlabel)
   bot_loss_summary_prev_outcome %>%
     filter(bot_strategy == strategy) %>%
     ggplot(aes(x = prev_outcome, y = mean_player_win_pct, fill = strategy)) +
-    # geom_bar(stat = "identity", alpha = 0.5, color = "grey50", fill = "steelblue") +
-    geom_bar(stat = "identity", alpha = 0.5) +
-    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0.5, size = 1, color = "midnightblue") +
-    geom_hline(yintercept = 1 / 3, linetype = "dashed", color = "red", size = 1) +
-    scale_y_continuous(labels = seq(0, 0.9, by = 0.3),
-                       breaks = seq(0, 0.9, by = 0.3),
-                       limits = c(0, 0.9)) +
+    geom_bar(stat = "identity", alpha = 0.75, width = 0.75) +
+    geom_errorbar(aes(ymin = se_lower, ymax = se_upper), width = 0, size = 1, color = "black") +
+    geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
+    geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
+    scale_y_continuous(
+      name = "Win percentage",
+      breaks = seq(0, 0.9, by = 0.3),
+      labels = as.character(seq(0, 0.9, by = 0.3)),
+      limits = c(0, 0.9)
+    ) +
+    scale_x_discrete(
+      name = xlabel
+    ) +
     scale_fill_viridis_d(begin = 0.75) +
-    labs(x = xlabel, y = "Mean win percentage") +
     ggtitle(STRATEGY_LOOKUP[[strategy]]) +
     individ_plot_theme +
-    theme(legend.position = "none",
-          axis.text.x = element_text(angle = 0, vjust = 1))
+    theme(
+      axis.ticks.x = element_blank(),
+      axis.text.x = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
+      legend.position = "none"
+    )
 }
 
 
 
 
 # INITIALIZATION ====
+
 bot_data = read_bot_data(DATA_FILE, STRATEGY_LEVELS, GAME_ROUNDS)
 
 
-# ANALYSIS: Participants, completion time ====
+# SUMMARY: Participants, completion time ====
 
 # How many complete participants do we have for each bot strategy?
 bot_data %>%
@@ -401,115 +315,52 @@ power = pwr.t.test(n = 30, sig.level = 0.05, power = 0.9, type = "one.sample", a
 
 
 
-# ANALYSIS: Win rates, win count differentials ====
+# ANALYSIS: Win percentages ====
 
-# Calculate WCD across all rounds
-wcd_all = get_bot_strategy_win_count_differential(bot_data)
+# Overall win percentage
+subject_win_pct = get_subject_block_win_pct(bot_data, blocksize = 300)
+condition_win_pct = get_block_win_pct_summary(subject_win_pct)
 
-# Print average and SE of *WCD* for each strategy "group"
-for (strat_class in list(TRANSITION_STRATEGIES, OUTCOME_STRATEGIES, DUAL_DEPENDENCY_STRATEGIES)) {
-  print(strat_class)
-  print(
-    wcd_all %>%
-      filter(bot_strategy %in% strat_class) %>%
-      summarize(
-        players = n(),
-        wcd_mean = mean(win_count_diff),
-        wcd_se = sd(win_count_diff) / sqrt(players)
-      )
-  )
-}
-
-# Print average and SE of *win rates* for each strategy "group"
-# Note comparison to power analysis above
-for (strat_class in list(TRANSITION_STRATEGIES, OUTCOME_STRATEGIES, DUAL_DEPENDENCY_STRATEGIES)) {
-  print(strat_class)
-  print(
-    bot_data %>%
-      filter(is_bot == 0,
-             bot_strategy %in% strat_class) %>%
-      group_by(player_id) %>%
-      count(win = player_outcome == "win") %>%
-      mutate(total = sum(n),
-             win_pct = n / total) %>%
-      filter(win == TRUE) %>%
-      ungroup() %>%
-      summarize(
-        players = n(),
-        win_pct_mean = mean(win_pct),
-        win_pct_se = sd(win_pct) / sqrt(players)
-      )
-  )
-}
+# Win percentage over time
+subject_block_win_pct = get_subject_block_win_pct(bot_data, blocksize = 30)
+condition_block_win_pct = get_block_win_pct_summary(subject_block_win_pct)
 
 
-# FIGURE: Bot win count differentials ====
+# FIGURE: Win percentages ====
 
-# Get average WCD for each strategy
-wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
-# Generate figure
-fig_overall = plot_bot_strategy_win_count_differential_summary(wcd_summary)
-
-# Calculate WCD by blocks
-subject_block_data = get_subject_block_data(bot_data, blocksize = 30)
-block_data_summary = get_block_data_summary(subject_block_data)
-# Generate figure
-fig_rounds = plot_bot_strategy_win_pct_by_block(block_data_summary)
-
-# Draw figures
-fig_overall + fig_rounds +
-  plot_layout(widths = c(1, 2))
-  # plot_annotation(tag_levels = 'A') &
-  # theme(plot.tag = element_text(size = 24))
-
-# TODO save to pdf
-
-
-
-
-# Thesis figure
-
-label_width = 10
-summary_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_positive"]], label_width),
-                   "prev_move_negative" = str_wrap(STRATEGY_LOOKUP[["prev_move_negative"]], label_width),
-                   "opponent_prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_positive"]], label_width),
-                   "opponent_prev_move_nil" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_nil"]], label_width),
-                   "win_nil_lose_positive" = str_wrap(STRATEGY_LOOKUP[["win_nil_lose_positive"]], label_width),
-                   "win_positive_lose_negative" = str_wrap(STRATEGY_LOOKUP[["win_positive_lose_negative"]], label_width),
-                   "outcome_transition_dual_dependency" = str_wrap(STRATEGY_LOOKUP[["outcome_transition_dual_dependency"]], label_width))
-
-wcd_summary %>%
-  ggplot(aes(x = bot_strategy, y = mean_win_count_diff)) +
-  geom_point(aes(color = bot_strategy),
-             size = 6) +
-  geom_errorbar(aes(color = bot_strategy, ymin = lower_se, ymax = upper_se),
-                width = 0.25, size = 1) +
-  geom_hline(yintercept = 0, size = 2, linetype = "dashed", color = "red") +
-  # labs(x = "", y = "Mean win count differential") +
-  #ggtitle("Win count differential across bot strategies") +
-  # ggtitle("Aggregate") +
-  #scale_x_discrete(labels = summary_labels) +
-  labs(x = "", y = "") +
+# > Overall win percentage ====
+win_pct_overall = condition_win_pct %>%
+  ggplot(aes(x = bot_strategy, y = mean_win_pct, color = bot_strategy)) +
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct),
+                width = 0, size = 1) +
+  geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
+  ggtitle("Aggregate") +
   scale_color_viridis(discrete = TRUE,
                       name = element_blank()) +
+  scale_y_continuous(
+    name = "Win percentage",
+    breaks = seq(0.3, 0.9, by = 0.1),
+    labels = as.character(seq(0.3, 0.9, by = 0.1)),
+    limits = c(0.3, 0.9)
+  ) +
+  scale_x_discrete(
+    name = "",
+    labels = element_blank()
+  ) +
   individ_plot_theme +
   theme(
-    # plot.title = element_text(size = 32, face = "bold"),
-    axis.title.y = element_text(size = 24, face = "bold"),
-    # axis.text.x = element_text(size = 20, face = "bold", angle = 0, vjust = 1),
-    # axis.text.x = element_text(size = 20, face = "bold", angle = 0, vjust = 1),
+    # remove X axis text and ticks
     axis.text.x = element_blank(),
-    # axis.text.y = element_text(face = "bold", size = 20),
+    axis.ticks.x = element_blank(),
     legend.position = "none",
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    # panel.grid.major.y = element_blank(),
-    # panel.grid.minor.y = element_blank(),
   )
 
-ggsave("img/bot_wcd.pdf")
+win_pct_overall
 
 
+# > Win percentage over time ====
 label_width = 12
 strategy_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_positive"]], label_width),
                     "prev_move_negative" = str_wrap(STRATEGY_LOOKUP[["prev_move_negative"]], label_width),
@@ -519,57 +370,84 @@ strategy_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_
                     "win_positive_lose_negative" = str_wrap(STRATEGY_LOOKUP[["win_positive_lose_negative"]], label_width),
                     "outcome_transition_dual_dependency" = str_wrap(STRATEGY_LOOKUP[["outcome_transition_dual_dependency"]], label_width))
 
-block_labels = c("1" = "30", "2" = "60", "3" = "90", "4" = "120", "5" = "150",
-                 "6" = "180", "7" = "210", "8" = "240", "9" = "270", "10" = "300")
+block_labels = c("0" = "30", "1" = "60", "2" = "90", "3" = "120", "4" = "150",
+                 "5" = "180", "6" = "210", "7" = "240", "8" = "270", "9" = "300")
 
-block_data_summary %>%
+win_pct_bins = block_data_summary %>%
   ggplot(aes(x = round_block, y = mean_win_pct, color = bot_strategy)) +
-  geom_point(size = 6, alpha = 0.75) +
-  geom_errorbar(aes(ymin = lower_ci, ymax = upper_ci), size = 1, width = 0.25, alpha = 0.75) +
-  geom_hline(yintercept = 1 / 3, linetype = "dashed", color = "red", size = 2) +
-  # labs(x = "Game round", y = "Mean win percentage") +
-  # ggtitle("Participant win percentage against bot strategies") +
-  # ggtitle("By Round") +
-  labs(x = "", y = "") +
+  geom_point(size = 6) +
+  geom_errorbar(aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct), size = 1, width = 0) +
+  geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
+  ggtitle("By Round") +
   scale_color_viridis(discrete = T,
-                      name = element_blank(),
+                      name = "Condition",
                       labels = strategy_labels) +
-  scale_x_continuous(labels = block_labels, breaks = seq(1:10)) +
+  scale_x_continuous(
+    name = "",
+    labels = block_labels,
+    breaks = seq(1:10)) +
+  scale_y_continuous(
+    name = "",
+    breaks = seq(0.3, 0.9, by = 0.1),
+    labels = c("", "", "", "", "", "", ""),
+    limits = c(0.3, 0.9)
+  ) +
   individ_plot_theme +
-  theme(#axis.text.x = element_blank(),
-    axis.title.y = element_text(size = 24, face = "bold"),
-    legend.text = element_text(face = "bold", size = 14),
-    # legend.position = "right",
-    legend.position = "none",
-    legend.spacing.y = unit(1.0, 'lines'),
-    #legend.key = element_rect(size = 2),
-    legend.key.size = unit(4.75, 'lines'),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    panel.grid.minor.y = element_blank(),
-    axis.text.x = element_text(angle = 0)
-  )
+  theme(
+    # Make X axis text sideways
+    axis.text.x = element_text(face = "bold", size = 14, angle = 45, vjust = 0.5, family = "Avenir", color = "black"),
+    # Add legend formatting
+    legend.position = "right",
+    legend.key = element_rect(colour = "transparent", fill = "transparent"),
+    legend.spacing.y = unit(0, "lines"),
+    legend.key.size = unit(3.5, "lines"))
 
-ggsave("img/bot_win_pct.pdf")
+win_pct_bins
+
+
+# > Combined figure ====
+win_pct_overall + win_pct_bins +
+  plot_layout(widths = c(1, 2))
+
+ggsave(
+  filename = "bot_win_rates_win_trajectory.png",
+  path = "../figures",
+  width = 10, height = 6.5
+)
+
 
 
 
 # ANALYSIS: Conditional win percentages ====
 
 CUTOFF = 200
+MOVES_ORDERED = c("rock", "paper", "scissors")
+OUTCOMES_ORDERED = c("win", "tie", "loss")
 
 # 1. Bot previous move strategies
 bot_loss_prev_move = get_bot_prev_move_loss_pct(bot_data, CUTOFF)
 bot_loss_summary_prev_move = get_bot_prev_move_win_pct_summary(bot_loss_prev_move)
+bot_loss_summary_prev_move$prev_move = factor(
+  bot_loss_summary_prev_move$prev_move,
+  levels = MOVES_ORDERED
+)
 
 # 2. Player previous move strategies
 player_win_prev_move = get_player_prev_move_win_pct(bot_data, CUTOFF)
 player_win_summary_prev_move = get_bot_prev_move_win_pct_summary(player_win_prev_move)
+player_win_summary_prev_move$prev_move = factor(
+  player_win_summary_prev_move$prev_move,
+  levels = MOVES_ORDERED
+)
 
 # 3. Bot previous outcome
 bot_loss_prev_outcome = get_bot_prev_outcome_loss_pct(bot_data, CUTOFF)
 bot_loss_summary_prev_outcome = get_bot_prev_outcome_win_pct_summary(bot_loss_prev_outcome)
-
+bot_loss_summary_prev_outcome$prev_outcome = factor(
+  bot_loss_summary_prev_outcome$prev_outcome,
+  levels = OUTCOMES_ORDERED
+)
 
 
 # Transition strategies ANOVA
@@ -595,8 +473,8 @@ summary(
   )
 )
 
-# Transition strategies t tests
-# TODO there's certainly a more efficient way to do this lol...
+# Transition strategies t-tests
+# TODO there's certainly a more efficient way to do this...
 # All win rates significantly greater than chance
 dat = bot_loss_prev_move %>% filter(bot_strategy == "prev_move_positive")
 for (move in c("rock", "paper", "scissors")) {
@@ -654,8 +532,7 @@ summary(
   )
 )
 
-# Outcome-transition strategies t tests
-# TODO there's certainly a more efficient way to do this lol...
+# Outcome-transition strategies t-tests
 # All win rates significantly greater than chance after a *tie* only
 dat = bot_loss_prev_outcome %>% filter(bot_strategy == "win_nil_lose_positive")
 for (outcome in c("win", "loss", "tie")) {
@@ -679,10 +556,6 @@ for (outcome in c("win", "loss", "tie")) {
 }
 
 
-
-
-
-
 # FIGURE: Conditional win percentages ====
 
 # 1. Bot previous move strategies
@@ -704,8 +577,12 @@ prev_move_positive_plot + prev_move_negative_plot +
   win_nil_lose_positive_plot_outcome + win_positive_lose_negative_plot_outcome +
   plot_layout(ncol = 2) +
   plot_annotation(tag_levels = 'A') &
-  theme(plot.tag = element_text(size = 24))
+  theme(plot.tag = element_text(size = 24, family = "Avenir"))
 
 
-# TODO save to pdf
+ggsave(
+  filename = "bot_strategy_conditional_win_pct.png",
+  path = "../figures",
+  width = 11.5, height = 13
+)
 

@@ -13,12 +13,16 @@ library(tidyverse)
 library(viridis)
 library(patchwork)
 library(pwr)
+library(scales)
 
 
 # GLOBALS ====
 
 DATA_PATH = "../data" # pathway to data file
 DATA_FILE = "rps_v2_data.csv" # name of file containing full dataset for all rounds
+FR_FILE = "rps_v2_data_freeResp.csv" # name of file containing free response survey data
+SLIDER_FILE = "rps_v2_data_sliderData.csv" # name of file containing slider survey data
+
 IMG_PATH = "../figures" # pathway to "figures" folder
 
 GAME_ROUNDS = 300
@@ -28,13 +32,7 @@ STRATEGY_LEVELS = c("prev_move_positive", "prev_move_negative",
                     "opponent_prev_move_positive", "opponent_prev_move_nil",
                     "win_nil_lose_positive", "win_positive_lose_negative",
                     "outcome_transition_dual_dependency")
-STRATEGY_LOOKUP = list("prev_move_positive" = "Previous move (+)",
-                       "prev_move_negative" = "Previous move (−)",
-                       "opponent_prev_move_positive" = "Opponent previous move (+)",
-                       "opponent_prev_move_nil" = "Opponent previous move (0)",
-                       "win_nil_lose_positive" = "Win-stay lose-positive",
-                       "win_positive_lose_negative" = "Win-positive lose-negative",
-                       "outcome_transition_dual_dependency" = "Previous outcome, previous transition")
+
 
 
 # DATA PROCESSING FUNCTIONS ====
@@ -46,9 +44,9 @@ STRATEGY_LOOKUP = list("prev_move_positive" = "Previous move (+)",
 # Finally, one participant emailed assuring that she had completed the full set of rounds,
 # though we don't have complete data. Thus, 218 students are given credit in SONA,
 # while the below produces 217 complete participant data sets.
-read_bot_data = function(filename, strategies, game_rounds) {
+read_bot_data = function(filename, strategy_levels, game_rounds) {
   data = read_csv(filename)
-  data$bot_strategy = factor(data$bot_strategy, levels = strategies)
+  data$bot_strategy = factor(data$bot_strategy, levels = strategy_levels)
 
   # Remove all incomplete games
   incomplete_games = data %>%
@@ -71,18 +69,14 @@ read_bot_data = function(filename, strategies, game_rounds) {
     filter(trials > game_rounds) %>%
     select(sona_survey_code)
 
-  # Next, get game id for the earlier complete game
-  # NB: commented out code checks that we have slider/free resp data for at least one of the games
+  # Next, get game id for the later complete game and remove it (below)
   duplicate_games = data %>%
     filter(sona_survey_code %in% repeat_codes$sona_survey_code &
              is_bot == 0  &
              round_index == game_rounds) %>%
     select(sona_survey_code, game_id, player_id, round_begin_ts) %>%
-    # remove the earlier one since the later one has free response and slider data (confirm with joins below)
     group_by(sona_survey_code) %>%
-    filter(round_begin_ts == min(round_begin_ts)) %>%
-    # inner_join(fr_data, by = c("game_id", "player_id")) %>%
-    # inner_join(slider_data, by = c("game_id", "player_id")) %>%
+    filter(round_begin_ts == max(round_begin_ts)) %>%
     distinct(game_id)
 
   data = data %>%
@@ -223,7 +217,7 @@ default_plot_theme = theme(
 # GRAPHING FUNCTIONS ====
 
 # Plot average win percent based on previous move dependency
-plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, xlabel) {
+plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, title, xlabel) {
   bot_loss_summary_prev_move %>%
     filter(bot_strategy == strategy) %>%
     ggplot(aes(x = prev_move, y = mean_player_win_pct, fill = strategy)) +
@@ -241,7 +235,7 @@ plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, xlabel) 
       name = xlabel
     ) +
     scale_fill_viridis_d(begin = 0.25) +
-    ggtitle(STRATEGY_LOOKUP[[strategy]]) +
+    ggtitle(title) +
     default_plot_theme +
     theme(
       axis.ticks.x = element_blank(),
@@ -251,7 +245,7 @@ plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, xlabel) 
 }
 
 # Plot average win percent based on outcome dependency
-plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, xlabel) {
+plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, title, xlabel) {
   bot_loss_summary_prev_outcome %>%
     filter(bot_strategy == strategy) %>%
     ggplot(aes(x = prev_outcome, y = mean_player_win_pct, fill = strategy)) +
@@ -269,7 +263,7 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, xlabel)
       name = xlabel
     ) +
     scale_fill_viridis_d(begin = 0.75) +
-    ggtitle(STRATEGY_LOOKUP[[strategy]]) +
+    ggtitle(title) +
     default_plot_theme +
     theme(
       axis.ticks.x = element_blank(),
@@ -332,7 +326,7 @@ condition_block_win_pct = get_block_win_pct_summary(subject_block_win_pct)
 
 # How did bot win percentage values compare to chance?
 for (bot_strat in unique(subject_win_pct$bot_strategy)) {
-  print(STRATEGY_LOOKUP[bot_strat])
+  print(bot_strat)
   print(
     t.test(x = subject_win_pct$win_pct[subject_win_pct$bot_strategy == bot_strat],
            mu = (1/3))
@@ -343,9 +337,41 @@ for (bot_strat in unique(subject_win_pct$bot_strategy)) {
 
 # FIGURE: Win percentages ====
 
+strategy_lookup = list("prev_move_positive" = "Self-transition (+)",
+                       "prev_move_negative" = "Self-transition (−)",
+                       "opponent_prev_move_positive" = "Opponent-\ntransition (+)",
+                       "opponent_prev_move_nil" = "Opponent-\ntransition (0)",
+                       "win_nil_lose_positive" = "Previous outcome (W0L+T−)",
+                       "win_positive_lose_negative" = "Previous outcome (W+L−T0)",
+                       "outcome_transition_dual_dependency" = "Previous outcome, previous transition")
+
+strategy_labels = c(
+  "Self-transition (+)",
+  "Self-transition (−)",
+  "Opponent-\ntransition (+)",
+  "Opponent-\ntransition (0)",
+  "Previous outcome (W0L+T−)",
+  "Previous outcome (W+L−T0)",
+  "Previous outcome, previous transition"
+)
+
+condition_win_pct = condition_win_pct %>%
+  rowwise() %>%
+  mutate(
+    bot_strategy_str = factor(strategy_lookup[[bot_strategy]],
+                              levels = strategy_labels)
+  )
+
+condition_block_win_pct = condition_block_win_pct %>%
+  rowwise() %>%
+  mutate(
+    bot_strategy_str = factor(strategy_lookup[[bot_strategy]],
+                              levels = strategy_labels)
+  )
+
 # > Overall win percentage ====
 win_pct_overall = condition_win_pct %>%
-  ggplot(aes(x = bot_strategy, y = mean_win_pct, color = bot_strategy)) +
+  ggplot(aes(x = bot_strategy_str, y = mean_win_pct, color = bot_strategy_str)) +
   geom_point(size = 6) +
   geom_errorbar(aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct),
                 width = 0, linewidth = 1) +
@@ -361,7 +387,7 @@ win_pct_overall = condition_win_pct %>%
     limits = c(0.3, 0.9)
   ) +
   scale_x_discrete(
-    name = "",
+    name = element_blank(),
     labels = element_blank()
   ) +
   default_plot_theme +
@@ -376,20 +402,13 @@ win_pct_overall
 
 
 # > Win percentage over time ====
-label_width = 12
-strategy_labels = c("prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["prev_move_positive"]], label_width),
-                    "prev_move_negative" = str_wrap(STRATEGY_LOOKUP[["prev_move_negative"]], label_width),
-                    "opponent_prev_move_nil" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_nil"]], label_width),
-                    "opponent_prev_move_positive" = str_wrap(STRATEGY_LOOKUP[["opponent_prev_move_positive"]], label_width),
-                    "win_nil_lose_positive" = str_wrap(STRATEGY_LOOKUP[["win_nil_lose_positive"]], label_width),
-                    "win_positive_lose_negative" = str_wrap(STRATEGY_LOOKUP[["win_positive_lose_negative"]], label_width),
-                    "outcome_transition_dual_dependency" = str_wrap(STRATEGY_LOOKUP[["outcome_transition_dual_dependency"]], label_width))
 
 block_labels = c("0" = "30", "1" = "60", "2" = "90", "3" = "120", "4" = "150",
                  "5" = "180", "6" = "210", "7" = "240", "8" = "270", "9" = "300")
 
+
 win_pct_bins = condition_block_win_pct %>%
-  ggplot(aes(x = round_block, y = mean_win_pct, color = bot_strategy)) +
+  ggplot(aes(x = round_block, y = mean_win_pct, color = bot_strategy_str)) +
   geom_point(size = 6) +
   geom_errorbar(aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct), linewidth = 1, width = 0) +
   geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
@@ -397,13 +416,13 @@ win_pct_bins = condition_block_win_pct %>%
   ggtitle("By Round") +
   scale_color_viridis(discrete = T,
                       name = "Bot pattern",
-                      labels = strategy_labels) +
+                      labels = label_wrap(20)) +
   scale_x_continuous(
-    name = "",
+    name = element_blank(),
     labels = block_labels,
     breaks = seq(0, 9)) +
   scale_y_continuous(
-    name = "",
+    name = element_blank(),
     breaks = seq(0.3, 0.9, by = 0.1),
     labels = c("", "", "", "", "", "", ""),
     limits = c(0.3, 0.9)
@@ -416,7 +435,7 @@ win_pct_bins = condition_block_win_pct %>%
     legend.position = "right",
     legend.key = element_rect(colour = "transparent", fill = "transparent"),
     legend.spacing.y = unit(0, "lines"),
-    legend.key.size = unit(3.5, "lines"))
+    legend.key.size = unit(3, "lines"))
 
 win_pct_bins
 
@@ -428,7 +447,8 @@ win_pct_overall + win_pct_bins +
 ggsave(
   filename = "stable_bot_win_pct.png",
   path = IMG_PATH,
-  width = 10, height = 6.5
+  width = 10, height = 6.5,
+  dpi = 300
 )
 
 
@@ -574,16 +594,16 @@ for (outcome in c("win", "loss", "tie")) {
 # FIGURE: Conditional win percentages ====
 
 # 1. Bot previous move strategies
-prev_move_positive_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_positive", "Bot previous move")
-prev_move_negative_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_negative", "Bot previous move")
+prev_move_positive_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_positive", "Self-transition (+)", "Bot previous move")
+prev_move_negative_plot = plot_prev_move_win_pct(bot_loss_summary_prev_move, "prev_move_negative", "Self-transition (−)", "Bot previous move")
 
 # 2. Player previous move strategies
-opponent_prev_move_positive_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_positive", "Player previous move")
-opponent_prev_move_nil_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_nil", "Player previous move")
+opponent_prev_move_positive_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_positive", "Opponent-transition (+)", "Player previous move")
+opponent_prev_move_nil_plot = plot_prev_move_win_pct(player_win_summary_prev_move, "opponent_prev_move_nil", "Opponent-transition (0)", "Player previous move")
 
 # 3. Bot previous outcome
-win_nil_lose_positive_plot_outcome = plot_outcome_win_pct(bot_loss_summary_prev_outcome, "win_nil_lose_positive", "Bot previous outcome")
-win_positive_lose_negative_plot_outcome = plot_outcome_win_pct(bot_loss_summary_prev_outcome, "win_positive_lose_negative", "Bot previous outcome")
+win_nil_lose_positive_plot_outcome = plot_outcome_win_pct(bot_loss_summary_prev_outcome, "win_nil_lose_positive", "Previous outcome (W0L+T−)", "Bot previous outcome")
+win_positive_lose_negative_plot_outcome = plot_outcome_win_pct(bot_loss_summary_prev_outcome, "win_positive_lose_negative", "Previous outcome (W+L−T0)", "Bot previous outcome")
 
 
 # Plot using patchwork
@@ -598,6 +618,532 @@ prev_move_positive_plot + prev_move_negative_plot +
 ggsave(
   filename = "stable_bot_win_pct_conditional.png",
   path = IMG_PATH,
-  width = 11.5, height = 13
+  width = 11.5, height = 13,
+  dpi = 300
 )
+
+
+
+# APPENDIX: Survey responses ====
+# `index`: order of the question (0, 1, 2, 3, 4)
+# `resp`: 1-7 slider response (1: "Strongly disagree", 7: "Strongly agree")
+
+# Read survey responses
+slider_resp = read_csv(paste(DATA_PATH, SLIDER_FILE, sep = "/"))
+# Filter survey responses to only participants with game data above
+slider_resp = slider_resp %>%
+  filter(game_id %in% unique(bot_data$game_id))
+# NB: not everybody we have a complete game for finished the survey
+length(unique(slider_resp$game_id))
+length(unique(bot_data$game_id))
+
+# Get condition and performance data to accompany slider responses
+slider_resp = slider_resp %>%
+  inner_join(
+    subject_win_pct,
+    by = c("game_id", "player_id")
+  )
+
+# Add human readable condition names
+slider_resp = slider_resp %>%
+  rowwise() %>%
+  mutate(
+    bot_strategy_str = factor(strategy_lookup[[bot_strategy]],
+                              levels = strategy_labels)
+  )
+
+# Function for generating plots of survey responses
+plot_survey_summary = function(response_summary, title, ylabel, supp_theme) {
+  response_summary %>%
+    ggplot(aes(x = bot_strategy_str, y = mean_resp, color = bot_strategy_str)) +
+    geom_point(size = 6) +
+    geom_errorbar(aes(ymin = mean_resp - se_resp, ymax = mean_resp + se_resp),
+                  width = 0, linewidth = 1) +
+    ggtitle(title) +
+    scale_color_viridis(discrete = T,
+                        name = "Bot pattern",
+                        labels = label_wrap(20)) +
+    scale_y_continuous(
+      name = ylabel,
+      breaks = seq(1, 7, by = 1),
+      labels = as.character(seq(1, 7, by = 1)),
+      limits = c(1, 7)
+    ) +
+    scale_x_discrete(
+      name = element_blank(),
+      labels = element_blank()
+    ) +
+    default_plot_theme +
+    theme(
+      # remove X axis text and ticks
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      plot.title = element_text(face = "bold", size = 18, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
+      axis.title.y = element_text(face = "bold", size = 18, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
+      axis.text.y = element_text(face = "bold", size = 14, family = "Avenir", color = "black"),
+      legend.title = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
+      legend.text = element_text(face = "bold", size = 14, family = "Avenir", color = "black"),
+    ) +
+    supp_theme
+}
+
+# Themes to customize the above
+legend_theme = theme(
+  legend.position = "right",
+  legend.key = element_rect(colour = "transparent", fill = "transparent"),
+  legend.spacing.y = unit(0, "lines"),
+  legend.key.size = unit(2.5, "lines")
+)
+no_legend = theme(
+  legend.position = "none"
+)
+
+
+
+# > Q1: ====
+# "My opponent was a real person and not a robot."
+q1 = slider_resp %>%
+  filter(index == 0)
+
+q1_summary = q1 %>%
+  group_by(bot_strategy_str) %>%
+  summarize(
+    mean_resp = mean(resp),
+    se_resp = sd(resp) / sqrt(n())
+  )
+
+p1 = plot_survey_summary(q1_summary, unique(q1$statement)[1], "Response", legend_theme)
+# - Overall, low confidence that opponent was a human across all conditions
+# - Confidence that opponent was a human increased as opponents became more complex
+
+summary(aov(
+  data = q1,
+  resp ~ bot_strategy_str
+))
+# Quantitative:
+# - Responses do not differ by condition
+
+# TODO consider plotting individual points as well in case e.g. bi-modal responding
+
+
+# > Q2: ====
+# "I was trying to win each round against my opponent."
+q2 = slider_resp %>%
+  filter(index == 1)
+
+q2_summary = q2 %>%
+  group_by(bot_strategy_str) %>%
+  summarize(
+    mean_resp = mean(resp),
+    se_resp = sd(resp) / sqrt(n())
+  )
+
+p2 = plot_survey_summary(q2_summary,
+                         str_wrap(unique(q2$statement)[1], 30),
+                         "", no_legend)
+# Qualitative:
+# - Overall, participants were above mid-line on attempts to win
+# - More engagement against easier opponents
+
+summary(aov(
+  data = q2,
+  resp ~ bot_strategy_str
+))
+# Quantitative:
+# - Responses do not differ by condition
+
+
+# > Q3: ====
+# "I was focused on winning for the entire time I was playing."
+q3 = slider_resp %>%
+  filter(index == 2)
+
+q3_summary = q3 %>%
+  group_by(bot_strategy_str) %>%
+  summarize(
+    mean_resp = mean(resp),
+    se_resp = sd(resp) / sqrt(n())
+  )
+
+p3 = plot_survey_summary(q3_summary,
+                         str_wrap(unique(q3$statement)[1], 30),
+                         "", no_legend)
+# Qualitative:
+# - Similar to focus above, participants were above mid-line *for entirety of game*
+# - Also similar to above, focus was higher against easier opponents
+
+summary(aov(
+  data = q3,
+  resp ~ bot_strategy_str
+))
+# Quantitative:
+# - Responses do not differ by condition
+
+
+# > Q4: ====
+# "I paid attention to my opponent’s moves in order to try and predict their next move."
+q4 = slider_resp %>%
+  filter(index == 3)
+
+q4_summary = q4 %>%
+  group_by(bot_strategy_str) %>%
+  summarize(
+    mean_resp = mean(resp),
+    se_resp = sd(resp) / sqrt(n())
+  )
+
+p4 = plot_survey_summary(q4_summary,
+                         str_wrap(unique(q4$statement)[1], 34),
+                         "", no_legend)
+# Qualitative:
+# - Relatively high reports of paying attention to predict opponent
+# - Unlike previous, no obvious relation between opponent difficulty and predictions
+
+summary(aov(
+  data = q4,
+  resp ~ bot_strategy_str
+))
+# Quantitative:
+# - Responses do not differ by condition
+
+
+# > Q5: ====
+# "There were noticeable patterns in my opponent’s moves that allowed me to predict their next move."
+q5 = slider_resp %>%
+  filter(index == 4)
+
+q5_summary = q5 %>%
+  group_by(bot_strategy_str) %>%
+  summarize(
+    mean_resp = mean(resp),
+    se_resp = sd(resp) / sqrt(n())
+  )
+
+p5 = plot_survey_summary(q5_summary,
+                         str_wrap(unique(q5$statement)[1], 34),
+                         "", no_legend)
+# Qualitative:
+# - Relatively high reports of noticeable patterns
+# (this is surprising in conditions where people didn't win!)
+# - No obvious relation between opponent difficulty and pattern ascription
+
+summary(aov(
+  data = q5,
+  resp ~ bot_strategy_str
+))
+# Quantitative:
+# - Responses do differ by condition
+TukeyHSD(
+  aov(
+    data = q5,
+    resp ~ bot_strategy_str
+  )
+)
+# Significant ANOVA is driven primarily by pairwise difference between most complex strategy
+# and three of the four transition bots (self-transition +, self-transition -, opponent-transition 0)
+
+
+# Combine figures ====
+# Reference:
+# https://patchwork.data-imaginist.com/articles/guides/layout.html
+layout = "
+  AA
+  BC
+  DE
+"
+
+p1 + p2 + p3 + p4 + p5 +
+  plot_layout(
+    design = layout,
+    heights = unit(c(10, 10), c('cm', 'cm'))
+  )
+
+ggsave(
+  filename = "survey_responses.png",
+  path = IMG_PATH,
+  width = 12, height = 16,
+  dpi = 300
+)
+
+
+
+# Summary stats
+slider_resp %>%
+  group_by(index, statement) %>%
+  summarize(
+    mean_resp = mean(resp),
+    sd_resp = sd(resp),
+    n = n()
+  )
+
+
+# APPENDIX: Free response answers ====
+
+# "In the text box below, please describe any strategies you used to try and beat your opponent."
+fr_resp = read_csv(paste(DATA_PATH, FR_FILE, sep = "/"))
+fr_resp = fr_resp %>%
+  filter(game_id %in% unique(bot_data$game_id))
+# NB: not everybody we have a complete game for finished the survey
+length(unique(fr_resp$game_id))
+glimpse(fr_resp)
+
+
+
+
+# APPENDIX: Individual learning curves ====
+
+# Add human-readable condition names
+# NB: no line breaks in these labels (distinct from the ones above)
+strategy_lookup = list("prev_move_positive" = "Self-transition (+)",
+                       "prev_move_negative" = "Self-transition (−)",
+                       "opponent_prev_move_positive" = "Opponent-transition (+)",
+                       "opponent_prev_move_nil" = "Opponent-transition (0)",
+                       "win_nil_lose_positive" = "Previous outcome (W0L+T−)",
+                       "win_positive_lose_negative" = "Previous outcome (W+L−T0)",
+                       "outcome_transition_dual_dependency" = "Previous outcome, previous transition")
+
+strategy_labels = c(
+  "Self-transition (+)",
+  "Self-transition (−)",
+  "Opponent-transition (+)",
+  "Opponent-transition (0)",
+  "Previous outcome (W0L+T−)",
+  "Previous outcome (W+L−T0)",
+  "Previous outcome, previous transition"
+)
+
+subject_block_win_pct = subject_block_win_pct %>%
+  rowwise() %>%
+  mutate(
+    bot_strategy_str = factor(strategy_lookup[[bot_strategy]],
+                              levels = strategy_labels)
+  )
+condition_block_win_pct = condition_block_win_pct %>%
+  rowwise() %>%
+  mutate(
+    bot_strategy_str = factor(strategy_lookup[[bot_strategy]],
+                              levels = strategy_labels)
+  )
+
+
+plot_individual_learning_curves = function(subject_data, summary_data, condition) {
+  subject_data %>%
+    filter(bot_strategy_str == condition) %>%
+    ggplot(aes(x = round_block, y = win_pct, group = game_id)) +
+    geom_line(linewidth = 2,
+              # color = "light gray",
+              alpha = 0.25
+    ) +
+    geom_point(data = summary_data %>% filter(bot_strategy_str == condition),
+               aes(x = round_block, y = mean_win_pct, group = "NA"),
+               color = "darkred", size = 6
+    ) +
+    geom_errorbar(data = summary_data %>% filter(bot_strategy_str == condition),
+                  aes(x = round_block, y = mean_win_pct, group = "NA",
+                      ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct),
+                  color = "darkred", width = 0, linewidth = 1
+    ) +
+    geom_hline(yintercept = 1/3, linewidth = 0.75, linetype = "dashed", color = "black") +
+    geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "solid", color = "black") +
+    ggtitle(condition) +
+    scale_x_continuous(
+      name = element_blank(),
+      labels = block_labels,
+      breaks = seq(0, 9)) +
+    scale_y_continuous(name = "Win percentage") +
+    default_plot_theme +
+    theme(
+      # Make X axis text sideways
+      axis.text.x = element_text(face = "bold", size = 14, angle = 45, vjust = 0.5, family = "Avenir", color = "black")
+    )
+}
+
+strats = unique(subject_block_win_pct$bot_strategy_str)
+t1 = plot_individual_learning_curves(subject_block_win_pct, condition_block_win_pct, strats[1])
+t2 = plot_individual_learning_curves(subject_block_win_pct, condition_block_win_pct, strats[2])
+t3 = plot_individual_learning_curves(subject_block_win_pct, condition_block_win_pct, strats[3])
+t4 = plot_individual_learning_curves(subject_block_win_pct, condition_block_win_pct, strats[4])
+
+t1 + t2 + t3 + t4 +
+  plot_layout(
+    ncol = 2,
+    heights = unit(c(10, 10), c('cm', 'cm'))
+  )
+
+ggsave(
+  filename = "individual_curves.png",
+  path = IMG_PATH,
+  width = 13, height = 10.5,
+  dpi = 300
+)
+
+
+
+# APPENDIX: self-transitions against outcome-transition opponents ====
+
+TRANSITION_LOOKUP = matrix(
+  data = c(c("0", "-", "+"), c("+", "0", "-"), c("-", "+", "0")),
+  nrow = 3, ncol = 3, byrow = T,
+  dimnames = list(c("rock", "paper", "scissors"), c("rock", "paper", "scissors"))
+)
+
+get_player_transition_dist = function(data) {
+  data %>%
+    filter(is_bot == 0) %>%
+    group_by(bot_strategy, game_id, player_id) %>%
+    filter(!is.na(prev_move), # lag call above sets NA for lag on first move
+           prev_move != "none",
+           player_move != "none") %>%
+    rowwise() %>%
+    # add transition
+    mutate(transition = TRANSITION_LOOKUP[player_move, prev_move]) %>%
+    # calculate player transition probabilities
+    count(transition) %>%
+    group_by(bot_strategy, game_id, player_id) %>%
+    mutate(total_transitions = sum(n),
+           p_transition = n / total_transitions) %>%
+    ungroup()
+}
+
+# Get data for `win_nil_lost_positive` bot, last 100 rounds, player data only
+bot1 = bot_data %>%
+  filter(bot_strategy == "win_nil_lose_positive" &
+         round_index > 200 & is_bot == 0) %>%
+  group_by(player_id) %>%
+  mutate(prev_move = lag(player_move, 1))
+
+# Get each player's distribution of self-transitions in this subset
+bot1_transitions = get_player_transition_dist(bot1)
+
+# Get each player's win percentages in this subset
+bot1_wins = bot1 %>%
+  group_by(player_id) %>%
+  count(player_outcome) %>%
+  mutate(
+    rounds = sum(n),
+    win_pct = n / rounds
+  ) %>%
+  filter(player_outcome == "win") %>%
+  rename("n_wins" = n)
+
+# Join the transition data and the win percentage data
+bot1_transitions = bot1_transitions %>%
+  inner_join(bot1_wins, by = c("player_id"))
+
+
+# What accounts for people's success after ties and in general?
+
+bot1_transitions %>%
+  filter(win_pct >= 0.5) %>%
+  group_by(transition) %>%
+  summarize(
+    mean_pct = mean(p_transition),
+    se_pct = sd(p_transition) / sqrt(n()),
+    n = n(),
+    mean_win_pct = mean(win_pct),
+    se_win_pct = sd(win_pct) / sqrt(n())
+  )
+# What's going on in the above:
+# Overall tendency to choose 0 transition (consistent with win-tie trap)
+# ALSO, small group of participants who trapped bot in continual loss pattern
+# by always shifting + (starting from after a win, this traps the bot in losses)
+
+
+# Do people choose 0 transitions more than chance? And is doing so related to win pct?
+t.test(
+  bot1_transitions$p_transition[bot1_transitions$transition == "0"],
+  mu = 1/3
+)
+plot(
+  bot1_transitions$p_transition[bot1_transitions$transition == "0"],
+  bot1_transitions$win_pct[bot1_transitions$transition == "0"]
+)
+
+# Is choosing + transitions related to win pct?
+plot(
+  bot1_transitions$p_transition[bot1_transitions$transition == "+"],
+  bot1_transitions$win_pct[bot1_transitions$transition == "+"]
+)
+cor.test(
+  bot1_transitions$p_transition[bot1_transitions$transition == "+"],
+  bot1_transitions$win_pct[bot1_transitions$transition == "+"]
+)
+
+
+
+
+
+
+
+# Get data for `win_nil_lost_positive` bot, last 100 rounds, player data only
+bot2 = bot_data %>%
+  filter(bot_strategy == "win_positive_lose_negative" &
+           round_index > 200 & is_bot == 0) %>%
+  group_by(player_id) %>%
+  mutate(prev_move = lag(player_move, 1))
+
+# Get each player's distribution of self-transitions in this subset
+bot2_transitions = get_player_transition_dist(bot2)
+
+# Get each player's win percentages in this subset
+bot2_wins = bot2 %>%
+  group_by(player_id) %>%
+  count(player_outcome) %>%
+  mutate(
+    rounds = sum(n),
+    win_pct = n / rounds
+  ) %>%
+  filter(player_outcome == "win") %>%
+  rename("n_wins" = n)
+
+# Join the transition data and the win percentage data
+bot2_transitions = bot2_transitions %>%
+  inner_join(bot2_wins, by = c("player_id"))
+
+
+# What accounts for people's success after ties and in general?
+
+bot2_transitions %>%
+  filter(win_pct >= 0.6) %>%
+  group_by(transition) %>%
+  summarize(
+    mean_pct = mean(p_transition),
+    se_pct = sd(p_transition) / sqrt(n()),
+    n = n(),
+    mean_win_pct = mean(win_pct),
+    se_win_pct = sd(win_pct) / sqrt(n())
+  )
+# What's going on in the above:
+# Overall tendency to choose + transition (consistent with win-tie trap)
+# ALSO, small group of participants who trapped bot in continual loss pattern
+# by always shifting - (starting from after a win, this traps the bot in losses)
+
+
+# Do people choose + transitions above chance? And is doing so related to win percent?
+t.test(
+  bot2_transitions$p_transition[bot2_transitions$transition == "+"],
+  mu = 1/3
+)
+plot(
+  bot2_transitions$p_transition[bot2_transitions$transition == "+"],
+  bot2_transitions$win_pct[bot2_transitions$transition == "+"]
+)
+
+
+# Is choosing - transitions related to win percent?
+plot(
+  bot2_transitions$p_transition[bot2_transitions$transition == "-"],
+  bot2_transitions$win_pct[bot2_transitions$transition == "-"]
+)
+cor.test(
+  bot2_transitions$p_transition[bot2_transitions$transition == "-"],
+  bot2_transitions$win_pct[bot2_transitions$transition == "-"]
+)
+
+
+
+
+
+
+
 

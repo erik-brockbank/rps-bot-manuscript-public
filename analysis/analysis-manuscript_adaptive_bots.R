@@ -301,89 +301,10 @@ for (strat in unique(data$bot_strategy)) {
 # ANALYSIS: Win count differentials ====
 
 wcd_all = get_bot_strategy_win_count_differential(data)
-# # TODO move this into parent function above
-# wcd_all = wcd_all %>%
-#   rowwise() %>%
-#   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
-# wcd_all$complexity = factor(wcd_all$complexity,
-#                             levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
-#
-#
-# # How did bot WCD values compare to chance?
-# for (bot_strat in unique(wcd_all$bot_strategy)) {
-#   print(STRATEGY_LOOKUP[bot_strat])
-#   print(
-#     t.test(x = wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
-#   )
-# }
-#
-# # Number of participants with WCD values < 0
-# # Binomial tests
-# for (bot_strat in unique(wcd_all$bot_strategy)) {
-#   print(STRATEGY_LOOKUP[bot_strat])
-#   print(
-#     binom.test(
-#       x = sum(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat] < 0),
-#       n = length(wcd_all$win_count_diff[wcd_all$bot_strategy == bot_strat])
-#     )
-#   )
-# }
-#
-#
-#
-# # FIGURE: Win count differentials ====
-#
 wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
-# # TODO move this into parent function being called above
-# wcd_summary = wcd_summary %>%
-#   rowwise() %>%
-#   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
-# wcd_summary$complexity = factor(wcd_summary$complexity,
-#                                 levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
-#
-#
-# wcd_summary %>%
-#   ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = complexity)) +
-#   geom_point(size = 6) +
-#   geom_errorbar(
-#     aes(ymin = lower_se, ymax = upper_se),
-#     width = 0.1, size = 1) +
-#   # geom_jitter(data = wcd_all, aes(x = bot_strategy, y = win_count_diff),
-#   #             size = 2, alpha = 0.75, width = 0.25, height = 0) +
-#   geom_hline(yintercept = 0, size = 1, linetype = "dashed") +
-#   labs(x = "", y = "Bot win count differential") +
-#   # ggtitle("Adaptive bot performance against humans") +
-#   scale_x_discrete(
-#     name = element_blank(),
-#     labels = STRATEGY_LABELS) +
-#   scale_color_viridis(discrete = T) +
-#   default_plot_theme +
-#   theme(
-#     plot.title = element_text(size = 32, face = "bold"),
-#     axis.title.y = element_text(size = 24, face = "bold"),
-#     # NB: axis title below is to give cushion for adding complexity labels in PPT
-#     # axis.title.x = element_text(size = 64),
-#     # axis.text.x = element_blank(),
-#     axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-#     axis.text.y = element_text(size = 14, face = "bold"),
-#     legend.position = "bottom",
-#     legend.title = element_text(size = 18, face = "bold"),
-#     legend.text = element_text(size = 16)
-#   )
-#
-#
-# ggsave(filename = "v3_adaptive_bot_summary_complexity.png",
-#        path = IMG_PATH,
-#        device = "png",
-#        units = "in",
-#        width = 8.5,
-#        height = 6.5,
-#        dpi = 500, # NB: this requires re-opening in preview to fix dpi
-#        )
-#
-#
 
 
+# FIGURE: Win count differentials ====
 
 wcd_summary %>%
   ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = bot_strategy)) +
@@ -424,18 +345,11 @@ ggsave(filename = "adaptive_bot_wcd.png",
 )
 
 
+
 # ANALYSIS: Win percentage ====
 
 bot_win_pct = get_bot_win_pct(data)
 condition_win_pct = get_condition_win_pct(bot_win_pct)
-
-# condition_win_pct = condition_win_pct %>%
-#   rowwise() %>%
-#   mutate(complexity = COMPLEXITY_LOOKUP[bot_strategy])
-#
-# condition_win_pct$complexity = factor(condition_win_pct$complexity,
-#                                       levels = c("3-cell memory", "9-cell memory", "27-cell memory"))
-
 
 # How did bot win percentage values compare to chance?
 for (bot_strat in unique(bot_win_pct$bot_strategy)) {
@@ -449,7 +363,6 @@ for (bot_strat in unique(bot_win_pct$bot_strategy)) {
 
 
 # FIGURE: Win percentages ====
-
 
 condition_win_pct %>%
   ggplot(aes(x = bot_strategy, y = mean_win_pct, color = bot_strategy)) +
@@ -483,52 +396,11 @@ condition_win_pct %>%
   )
 
 
-
-ggsave(filename = "adaptive_bot_win_pct.png",
-       path = IMG_PATH,
-       width = 10,
-       height = 6
-)
-
-
-
-# Thesis figure
-
-# wcd_summary %>%
-#   ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = complexity)) +
-#   geom_point(size = 6) +
-#   geom_errorbar(
-#     aes(ymin = lower_se, ymax = upper_se),
-#     width = 0.1, size = 1) +
-#   # geom_jitter(data = wcd_all, aes(x = bot_strategy, y = win_count_diff),
-#   #             size = 2, alpha = 0.75, width = 0.25, height = 0) +
-#   geom_hline(yintercept = 0, size = 2, linetype = "dashed", color = "red") +
-#   # labs(x = "", y = "Bot win count differential") +
-#   labs(x = "", y = "") +
-#   # ggtitle("Adaptive bot performance against humans") +
-#   scale_x_discrete(
-#     name = element_blank(),
-#     # labels = STRATEGY_LABELS) +
-#     labels = c())+
-#   scale_color_viridis(discrete = T) +
-#   default_plot_theme +
-#   theme(
-#     plot.title = element_text(size = 32, face = "bold"),
-#     axis.title.y = element_text(size = 24, face = "bold"),
-#     # NB: axis title below is to give cushion for adding complexity labels in PPT
-#     # axis.title.x = element_text(size = 64),
-#     # axis.text.x = element_blank(),
-#     axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-#     axis.text.y = element_text(size = 14, face = "bold"),
-#     legend.position = "right",
-#     legend.title = element_text(size = 18, face = "bold"),
-#     legend.text = element_text(size = 16),
-#     panel.grid.major.x = element_blank(),
-#     panel.grid.minor.x = element_blank(),
-#   )
-#
-# ggsave("adaptive_bot_wcd.pdf")
-#
+# ggsave(filename = "adaptive_bot_win_pct.png",
+#        path = IMG_PATH,
+#        width = 10,
+#        height = 6
+# )
 
 
 
@@ -753,8 +625,6 @@ p1 = transition_ig_summary %>%
     axis.text.y = element_text(size = 14, face = "bold"),
     legend.position = "none"
   )
-
-
 
 
 cournot_transition_ig_summary = get_ig_summary(cournot_transition_ig)

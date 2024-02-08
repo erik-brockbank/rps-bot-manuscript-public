@@ -7,7 +7,8 @@
 # SETUP ====
 
 rm(list = ls())
-setwd("/Users/erikbrockbank/web/vullab/rps-bot-manuscript-public/analysis")
+# TODO set up relative path
+setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
 
 library(tidyverse)
 library(viridis)

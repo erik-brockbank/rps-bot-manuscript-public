@@ -9,10 +9,7 @@
 
 # SETUP ====
 
-rm(list = ls())
-# TODO set up relative path
-setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
-
+# setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
 library(patchwork)
 library(scales)
 library(tidyverse)
@@ -23,12 +20,10 @@ library(viridis)
 # GLOBALS ====
 
 DATA_PATH = "../data" # pathway to data file
-DATA_PATH = "../.." # pathway to data file
-
 # Experiment 1 questionnaire responses
-FR_FILE_E1 = "rps_v2_data_freeResp.csv" # name of file containing free response survey data
-SLIDER_FILE_E1 = "rps_v2_data_sliderData.csv" # name of file containing slider survey data
-TRIAL_DATA_E1 = "rps_v2_data.csv"
+FR_FILE_E1 = "rps_v2_data_freeResp.csv" # csv file containing free response survey data
+SLIDER_FILE_E1 = "rps_v2_data_sliderData.csv" # csv file containing slider survey data
+TRIAL_DATA_E1 = "rps_v2_data.RData" # RData file containing trial response data
 # Experiment 2 questionnaire responses
 FR_FILE_E2 = "rps_v3_data_freeResp.csv"
 SLIDER_FILE_E2 = "rps_v3_data_sliderData.csv"
@@ -37,7 +32,6 @@ TRIAL_DATA_E2 = "rps_v3_data.csv"
 IMG_PATH = "../figures" # pathway to "figures" folder
 
 # Strategy labels aligned with manuscript figures
-GAME_ROUNDS = 300
 E1_STRATEGY_LEVELS = c("prev_move_positive", "prev_move_negative",
                        "opponent_prev_move_positive", "opponent_prev_move_nil",
                        "win_nil_lose_positive", "win_positive_lose_negative",
@@ -84,48 +78,7 @@ E2_STRATEGY_LABELS = list(
 )
 
 
-# FUNCTIONS ====
-# Note: the raw data csv has substantially more unique participant data
-# than we keep in this function. Many participants did not complete the full set of rounds.
-# Several managed to complete 300 rounds twice with the same survey code: in this instance,
-# we keep the earlier of the two to ensure parity with other participants.
-# Finally, one participant emailed assuring that she had completed the full set of rounds,
-# though we don't have complete data. Thus, 218 students are given credit in SONA,
-# while the below produces 217 complete participant data sets.
-clean_e1_data = function(data, strategy_levels, game_rounds) {
-  data$bot_strategy = factor(data$bot_strategy, levels = strategy_levels)
-  # Remove all incomplete games
-  incomplete_games = data %>%
-    group_by(game_id, player_id) %>%
-    summarize(rounds = max(round_index)) %>%
-    filter(rounds < game_rounds) %>%
-    select(game_id) %>%
-    unique()
-  data = data %>%
-    filter(!(game_id %in% incomplete_games$game_id))
-  # Remove any duplicate complete games that have the same SONA survey code
-  # NB: this can happen if somebody played all the way through but exited before receiving credit
-  # First, fetch sona survey codes with multiple complete games
-  repeat_codes = data %>%
-    group_by(sona_survey_code) %>%
-    filter(is_bot == 0) %>%
-    summarize(trials = n()) %>%
-    filter(trials > game_rounds) %>%
-    select(sona_survey_code)
-  # Next, get game id for the later complete game and remove it (below)
-  duplicate_games = data %>%
-    filter(sona_survey_code %in% repeat_codes$sona_survey_code &
-             is_bot == 0  &
-             round_index == game_rounds) %>%
-    select(sona_survey_code, game_id, player_id, round_begin_ts) %>%
-    group_by(sona_survey_code) %>%
-    filter(round_begin_ts == max(round_begin_ts)) %>%
-    distinct(game_id)
-  data = data %>%
-    filter(!game_id %in% duplicate_games$game_id)
-  return(data)
-}
-
+# ANALYSIS FUNCTIONS ====
 
 # Function for generating plots of survey responses
 plot_survey_summary_e1 = function(response_summary, title, ylabel, default_theme, supp_theme) {
@@ -186,24 +139,15 @@ default_plot_theme = theme(
 
 
 # Experiment 1 ====
-
-# TODO save as rds file in original analysis script, read that here instead
-trial_data_e1 = read_csv(paste(DATA_PATH, TRIAL_DATA_E1, sep = "/"))
-trial_data_e1 = clean_e1_data(trial_data_e1, E1_STRATEGY_LEVELS, GAME_ROUNDS)
-trial_summary_e1 = trial_data_e1 %>%
-  filter(is_bot == 0) %>%
-  group_by(game_id, player_id, bot_strategy) %>%
-  summarize(rounds = n()) %>%
-  ungroup()
-
+load(paste(DATA_PATH, TRIAL_DATA_E1, sep = "/"))
 
 # > Free response data ====
-
 # "In the text box below, please describe any strategies you used to try and beat your opponent."
 fr_resp_e1 = read_csv(paste(DATA_PATH, FR_FILE_E1, sep = "/"))
+
 # Keep only participants whose data we analyzed in results
 fr_resp_e1 = fr_resp_e1 %>%
-  inner_join(trial_summary_e1,
+  inner_join(bot_data,
              by = c("game_id", "player_id"))
 
 # Print responses

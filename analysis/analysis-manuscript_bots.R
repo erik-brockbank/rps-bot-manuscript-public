@@ -1,92 +1,22 @@
+
 #
-# This script contains the final analysis of the *stable bot* experiment
-# for the rps bot journal submission
+# This script contains the final analyses of the *stable bot* experiment for the rps journal submission
 #
 
 
 # SETUP ====
 
-rm(list = ls())
-# TODO set up relative path
-setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
-
+# setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
 library(tidyverse)
 library(viridis)
 library(patchwork)
 library(pwr)
 library(scales)
 
-
-# GLOBALS ====
-
-DATA_PATH = "../data" # pathway to data file
-DATA_FILE = "rps_v2_data.csv" # name of file containing full dataset for all rounds
-
-IMG_PATH = "../figures" # pathway to "figures" folder
-
-GAME_ROUNDS = 300
-
-# Bot analysis globals
-STRATEGY_LEVELS = c("prev_move_positive", "prev_move_negative",
-                    "opponent_prev_move_positive", "opponent_prev_move_nil",
-                    "win_nil_lose_positive", "win_positive_lose_negative",
-                    "outcome_transition_dual_dependency")
-
-
-
-# DATA PROCESSING FUNCTIONS ====
-
-# Note: the raw data csv has substantially more unique participant data
-# than we keep in this function. Many participants did not complete the full set of rounds.
-# Several managed to complete 300 rounds twice with the same survey code: in this instance,
-# we keep the earlier of the two to ensure parity with other participants.
-# Finally, one participant emailed assuring that she had completed the full set of rounds,
-# though we don't have complete data. Thus, 218 students are given credit in SONA,
-# while the below produces 217 complete participant data sets.
-read_bot_data = function(filename, strategy_levels, game_rounds) {
-  data = read_csv(filename)
-  data$bot_strategy = factor(data$bot_strategy, levels = strategy_levels)
-
-  # Remove all incomplete games
-  incomplete_games = data %>%
-    group_by(game_id, player_id) %>%
-    summarize(rounds = max(round_index)) %>%
-    filter(rounds < game_rounds) %>%
-    select(game_id) %>%
-    unique()
-
-  data = data %>%
-    filter(!(game_id %in% incomplete_games$game_id))
-
-  # Remove any duplicate complete games that have the same SONA survey code
-  # NB: this can happen if somebody played all the way through but exited before receiving credit
-  # First, fetch sona survey codes with multiple complete games
-  repeat_codes = data %>%
-    group_by(sona_survey_code) %>%
-    filter(is_bot == 0) %>%
-    summarize(trials = n()) %>%
-    filter(trials > game_rounds) %>%
-    select(sona_survey_code)
-
-  # Next, get game id for the later complete game and remove it (below)
-  duplicate_games = data %>%
-    filter(sona_survey_code %in% repeat_codes$sona_survey_code &
-             is_bot == 0  &
-             round_index == game_rounds) %>%
-    select(sona_survey_code, game_id, player_id, round_begin_ts) %>%
-    group_by(sona_survey_code) %>%
-    filter(round_begin_ts == max(round_begin_ts)) %>%
-    distinct(game_id)
-
-  data = data %>%
-    filter(!game_id %in% duplicate_games$game_id)
-
-  return(data)
-}
+IMG_PATH = "../figures"
 
 
 # ANALYSIS FUNCTIONS ====
-
 
 # Divide each subject's trials into blocks of size blocksize (e.g. 10 trials)
 # then get each subject's win percent in each block
@@ -190,7 +120,7 @@ get_bot_prev_outcome_win_pct_summary = function(bot_loss_prev_outcome) {
 
 
 
-# GRAPHING STYLE FUNCTIONS ====
+# GRAPHING STYLE ====
 
 default_plot_theme = theme(
   # text
@@ -275,26 +205,20 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, title, 
 
 
 # INITIALIZATION ====
-
-bot_data = read_bot_data(paste(DATA_PATH, DATA_FILE, sep = "/"),
-                         STRATEGY_LEVELS,
-                         GAME_ROUNDS)
-
-
-# SUMMARY: Participants, completion time ====
+load("../data/rps_v2_data.RData")
 
 # How many complete participants do we have for each bot strategy?
 bot_data %>%
   filter(is_bot == 0) %>%
   group_by(bot_strategy) %>%
-  summarize(n = n() / GAME_ROUNDS)
+  summarize(n = n() / max(round_index))
 
 
 # How long did participants take to complete the task?
 bot_data %>%
   filter(is_bot == 0) %>%
   group_by(player_id) %>%
-  summarize(expt_completion_sec = (round_begin_ts[round_index == GAME_ROUNDS] - round_begin_ts[round_index == 1]) / 1000) %>%
+  summarize(expt_completion_sec = (round_begin_ts[round_index == max(bot_data$round_index)] - round_begin_ts[round_index == 1]) / 1000) %>%
   summarize(mean_expt_completion_sec = mean(expt_completion_sec),
             sd_expt_completion_sec = sd(expt_completion_sec))
 
@@ -508,7 +432,6 @@ summary(
 )
 
 # Transition strategies t-tests
-# TODO there's certainly a more efficient way to do this...
 # All win rates significantly greater than chance
 dat = bot_loss_prev_move %>% filter(bot_strategy == "prev_move_positive")
 for (move in c("rock", "paper", "scissors")) {
@@ -624,6 +547,7 @@ ggsave(
 
 
 # APPENDIX: self-transitions against outcome-transition opponents ====
+# NB: these results outlined in the discussion
 
 TRANSITION_LOOKUP = matrix(
   data = c(c("0", "-", "+"), c("+", "0", "-"), c("-", "+", "0")),
@@ -676,7 +600,6 @@ bot1_transitions = bot1_transitions %>%
 
 
 # What accounts for people's success after ties and in general?
-
 bot1_transitions %>%
   filter(win_pct >= 0.5) %>%
   group_by(transition) %>%
@@ -715,10 +638,6 @@ cor.test(
 
 
 
-
-
-
-
 # Get data for `win_positive_lose_negative` bot, last 100 rounds, player data only
 bot2 = bot_data %>%
   filter(bot_strategy == "win_positive_lose_negative" &
@@ -746,7 +665,6 @@ bot2_transitions = bot2_transitions %>%
 
 
 # What accounts for people's success after ties and in general?
-
 bot2_transitions %>%
   filter(win_pct >= 0.6) %>%
   group_by(transition) %>%
@@ -788,7 +706,7 @@ cor.test(
 
 
 # APPENDIX: Individual learning curves ====
-# NB: used in response to reviewers but not included in manuscript
+# NB: these results discussed with reviewers but not included in manuscript
 
 # Add human-readable condition names
 # NB: no line breaks in these labels (distinct from the ones above)

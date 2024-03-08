@@ -7,7 +7,7 @@
 
 # SETUP ====
 
-# setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
+setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
 library(patchwork)
 library(scales)
 library(tidyverse)
@@ -22,7 +22,7 @@ TRIAL_DATA_E1 = "rps_v2_data.RData" # RData file containing trial response data
   # Experiment 2
 FR_FILE_E2 = "rps_v3_data_freeResp.csv"
 SLIDER_FILE_E2 = "rps_v3_data_sliderData.csv"
-TRIAL_DATA_E2 = "rps_v3_data.csv"
+TRIAL_DATA_E2 = "rps_v3_data.RData"
   # Saving figure output
 IMG_PATH = "../figures/supplement"
 
@@ -355,15 +355,12 @@ TukeyHSD(
 
 # Experiment 2 ====
 
+load(paste(DATA_PATH, TRIAL_DATA_E2, sep = "/"))
 
-# TODO save as rds file in original analysis script, read that here instead
-trial_data_e2 = read_csv(paste(DATA_PATH, TRIAL_DATA_E2, sep = "/"))
-# trial_data_e2 = clean_e1_data(trial_data_e1, E1_STRATEGY_LEVELS, GAME_ROUNDS)
-trial_summary_e2 = trial_data_e2 %>%
+e2_metadata = bot_data %>%
   filter(is_bot == 0) %>%
-  group_by(game_id, player_id, bot_strategy) %>%
-  summarize(rounds = n()) %>%
-  ungroup()
+  select(player_id, bot_strategy) %>%
+  unique()
 
 
 # > Free response data ====
@@ -372,8 +369,8 @@ trial_summary_e2 = trial_data_e2 %>%
 fr_resp_e2 = read_csv(paste(DATA_PATH, FR_FILE_E2, sep = "/"))
 # Keep only participants whose data we analyzed in results
 fr_resp_e2 = fr_resp_e2 %>%
-  inner_join(trial_summary_e2,
-             by = c("game_id", "player_id"))
+  inner_join(e2_metadata,
+             by = c("player_id"))
 
 # Print responses
 fr_resp_e2 %>%
@@ -389,10 +386,10 @@ fr_resp_e2 %>%
 slider_resp_e2 = read_csv(paste(DATA_PATH, SLIDER_FILE_E2, sep = "/"))
 # Keep only participants whose data we analyzed in results
 slider_resp_e2 = slider_resp_e2 %>%
-  inner_join(trial_summary_e2,
-             by = c("game_id", "player_id"))
+  inner_join(e2_metadata,
+             by = c("player_id"))
 # Add human readable condition names
-# TODO this should be part of saved rds file from original data
+# TODO this replicates code in analysis file, should just do this once and store with RData
 slider_resp_e2 = slider_resp_e2 %>%
   rowwise() %>%
   mutate(

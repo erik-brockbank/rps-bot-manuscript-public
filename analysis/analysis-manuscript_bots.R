@@ -5,7 +5,6 @@
 
 
 # SETUP ====
-
 # setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
 library(tidyverse)
 library(viridis)
@@ -13,6 +12,7 @@ library(patchwork)
 library(pwr)
 library(scales)
 
+# Globals
 IMG_PATH = "../figures"
 
 

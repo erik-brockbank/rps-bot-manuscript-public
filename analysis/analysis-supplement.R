@@ -13,23 +13,20 @@ library(scales)
 library(tidyverse)
 library(viridis)
 
-
-
-# GLOBALS ====
-
-DATA_PATH = "../data" # pathway to data file
-# Experiment 1 questionnaire responses
+# Globals
+DATA_PATH = "../data"
+  # Experiment 1
 FR_FILE_E1 = "rps_v2_data_freeResp.csv" # csv file containing free response survey data
 SLIDER_FILE_E1 = "rps_v2_data_sliderData.csv" # csv file containing slider survey data
 TRIAL_DATA_E1 = "rps_v2_data.RData" # RData file containing trial response data
-# Experiment 2 questionnaire responses
+  # Experiment 2
 FR_FILE_E2 = "rps_v3_data_freeResp.csv"
 SLIDER_FILE_E2 = "rps_v3_data_sliderData.csv"
 TRIAL_DATA_E2 = "rps_v3_data.csv"
+  # Saving figure output
+IMG_PATH = "../figures/supplement"
 
-IMG_PATH = "../figures" # pathway to "figures" folder
-
-# Strategy labels aligned with manuscript figures
+  # Strategy labels aligned with manuscript figures
 E1_STRATEGY_LEVELS = c("prev_move_positive", "prev_move_negative",
                        "opponent_prev_move_positive", "opponent_prev_move_nil",
                        "win_nil_lose_positive", "win_positive_lose_negative",
@@ -63,7 +60,6 @@ E2_STRATEGY_LOOKUP = list(
   "opponent_outcome_transitions" = "Previous outcome",
   "opponent_outcome_prev_transition_dual" = "Previous outcome, previous transition"
 )
-
 E2_STRATEGY_LABELS = list(
   "Previous move",
   "Opponent previous move",

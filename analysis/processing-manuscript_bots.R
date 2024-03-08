@@ -1,17 +1,14 @@
 #
-# This script contains the data processing of the *stable bot* experiment
-# for the rps bot journal submission
+# This script contains the data processing of the *stable bot* experiment for the rps bot journal submission
 #
 
 
-
+# SETUP ====
 setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
 library(tidyverse)
 
-
-# GLOBALS ====
-DATA_PATH = "../data" # pathway to data file
-DATA_PATH = "../.."
+# Globals
+DATA_PATH = "../data"
 DATA_FILE = "rps_v2_data.csv" # name of file containing full dataset for all rounds
 GAME_ROUNDS = 300
 STRATEGY_LEVELS = c("prev_move_positive", "prev_move_negative",
@@ -69,5 +66,5 @@ read_bot_data = function(filename, strategy_levels, game_rounds) {
 bot_data = read_bot_data(paste(DATA_PATH, DATA_FILE, sep = "/"),
                          STRATEGY_LEVELS,
                          GAME_ROUNDS)
-# Save to RData
+# Save as RData
 save(bot_data, file = paste(DATA_PATH, "rps_v2_data.RData", sep = "/"))

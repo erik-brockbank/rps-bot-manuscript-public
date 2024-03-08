@@ -1,44 +1,17 @@
 #
-# This script contains the final analysis of the *adaptive bot* experiment
-# for the rps bot journal submission
+# This script contains the final analysis of the *adaptive bot* experiment for the rps bot journal submission
 #
 
 
 # SETUP ====
-
-rm(list = ls())
-# TODO set up relative path
 setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
-
 library(tidyverse)
 library(viridis)
 library(patchwork)
 library(pwr)
 
-
-# GLOBALS ====
-
-DATA_PATH = "../data" # pathway to data file
-DATA_FILE = "rps_v3_data.csv" # name of file containing full dataset for all rounds
+# Globals
 IMG_PATH = "../figures" # pathway to "figures" folder
-GAME_ROUNDS = 300 # number of rounds in each complete game
-
-# In order of complexity
-STRATEGY_LEVELS = c(
-  # 1x3
-  # "opponent_moves",
-  "opponent_transitions",
-  "opponent_courn_transitions",
-  # 3x3
-  "opponent_prev_move",
-  "bot_prev_move",
-  "opponent_outcome_transitions",
-  # 9x3
-  "opponent_bot_prev_move",
-  "opponent_prev_two_moves",
-  # "bot_prev_two_moves",
-  "opponent_outcome_prev_transition_dual"
-)
 
 STRATEGY_LOOKUP = list(
   # "opponent_moves" = "Move distribution",
@@ -53,21 +26,9 @@ STRATEGY_LOOKUP = list(
   "opponent_outcome_prev_transition_dual" = "Previous outcome, previous transition"
 )
 
-# COMPLEXITY_LOOKUP = c(
-#   "opponent_transitions" = "3-cell memory",
-#   "opponent_courn_transitions" = "3-cell memory",
-#   "opponent_prev_move" = "9-cell memory",
-#   "bot_prev_move" = "9-cell memory",
-#   "opponent_outcome_transitions" = "9-cell memory",
-#   "opponent_bot_prev_move" = "27-cell memory",
-#   "opponent_prev_two_moves" = "27-cell memory",
-#   "opponent_outcome_prev_transition_dual" = "27-cell memory"
-# )
-
 # NB: this is player move in rows, opponent move in columns
 OUTCOME_MATRIX = matrix(c(0, -1, 1, 1, 0, -1, -1, 1, 0), nrow = 3, byrow = T,
                         dimnames = list(c("rock", "paper", "scissors"), c("rock", "paper", "scissors")))
-
 
 TRANSITION_LOOKUP = matrix(
   data = c(c("0", "-", "+"), c("+", "0", "-"), c("-", "+", "0")),
@@ -164,95 +125,12 @@ STRATEGY_LABELS = c("opponent_moves" = str_wrap(STRATEGY_LOOKUP[["opponent_moves
 
 
 # INITIALIZATION ====
-# TODO move much of this into read data function
-data = read_csv(paste(DATA_PATH, DATA_FILE, sep = "/"))
-data$bot_strategy = factor(data$bot_strategy, levels = STRATEGY_LEVELS)
-
-# Remove all incomplete games
-incomplete_games = data %>%
-  group_by(game_id, player_id) %>%
-  summarize(rounds = max(round_index)) %>%
-  filter(rounds < GAME_ROUNDS) %>%
-  select(game_id) %>%
-  unique()
-incomplete_games
-
-data = data %>%
-  filter(!(game_id %in% incomplete_games$game_id))
-
-# Players with "NA" moves
-# (processing python script writes NA for empty move values)
-tmp = data %>% filter(is.na(player_move))
-tmp %>% group_by(sona_survey_code) %>% summarize(n())
-data = data %>% filter(!is.na(player_move))
-
-
-# Remove any duplicate complete games that have the same SONA survey code
-# NB: this can happen if somebody played all the way through but exited before receiving credit
-# First, fetch sona survey codes with multiple complete games
-repeat_codes = data %>%
-  group_by(sona_survey_code) %>%
-  filter(is_bot == 0) %>%
-  summarize(trials = n()) %>%
-  filter(trials > GAME_ROUNDS) %>%
-  select(sona_survey_code)
-repeat_codes
-# Next, get game id for the earlier complete game
-# NB: commented out code checks that we have slider/free resp data for at least one of the games
-duplicate_games = data %>%
-  filter(sona_survey_code %in% repeat_codes$sona_survey_code &
-           is_bot == 0  &
-           round_index == GAME_ROUNDS) %>%
-  select(sona_survey_code, game_id, player_id, round_begin_ts) %>%
-  # remove the later one to avoid results based on experience
-  group_by(sona_survey_code) %>%
-  filter(round_begin_ts == max(round_begin_ts)) %>%
-  # joins below check whether we have slider/free resp data for earlier or later survey code responses
-  # inner_join(fr_data, by = c("game_id", "player_id")) %>%
-  # inner_join(slider_data, by = c("game_id", "player_id")) %>%
-  distinct(game_id)
-duplicate_games
-
-data = data %>%
-  filter(!game_id %in% duplicate_games$game_id)
-
-
-# Sanity check: anybody with trials != 300?
-trial_count = data %>%
-  filter(is_bot == 0) %>%
-  group_by(sona_survey_code) %>%
-  summarize(trials = n()) %>%
-  filter(trials != GAME_ROUNDS)
-trial_count
-
-
-# Check that there are no rows with memory >= 300
-# (this was a bug in early data)
-mem = data %>%
-  filter(round_index == GAME_ROUNDS & is_bot == 1) %>%
-  group_by(bot_strategy, game_id, sona_survey_code) %>%
-  select(bot_strategy, game_id, sona_survey_code, bot_round_memory)
-
-mem = mem %>%
-  rowwise() %>%
-  mutate(memory_sum =
-           sum(as.numeric(unlist(regmatches(bot_round_memory, gregexpr("[[:digit:]]+", bot_round_memory))))))
-
-mem = mem %>% filter(memory_sum >= GAME_ROUNDS)
-
-data = data %>%
-  filter(!sona_survey_code %in% mem$sona_survey_code)
-
-# this person finished the experiment in 90s, chose paper 275 times, and lost 288 times
-data = data %>%
-  filter(game_id != "f7290e62-697c-46ec-b42d-51090ce3eed5")
-
-
+load("../data/rps_v3_data.RData")
 
 # ANALYSIS: Power ====
 
 # How many participants in each condition?
-data %>%
+bot_data %>%
   filter(is_bot == 0) %>%
   group_by(bot_strategy) %>%
   summarize(n = n_distinct(player_id))
@@ -278,10 +156,10 @@ pwr.t.test(sig.level = 0.05, d = d, n = 20, type = "one.sample", alternative = "
 
 # Print average and SE of *bot* win rates for each strategy condition
 # Note comparison to power analysis above
-for (strat in unique(data$bot_strategy)) {
+for (strat in unique(bot_data$bot_strategy)) {
   print(STRATEGY_LOOKUP[strat])
   print(
-    data %>%
+    bot_data %>%
       filter(is_bot == 0, # NOTE is bot here
              bot_strategy == strat) %>%
       group_by(player_id) %>%
@@ -301,7 +179,7 @@ for (strat in unique(data$bot_strategy)) {
 
 # ANALYSIS: Win count differentials ====
 
-wcd_all = get_bot_strategy_win_count_differential(data)
+wcd_all = get_bot_strategy_win_count_differential(bot_data)
 wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
 
 
@@ -349,7 +227,7 @@ ggsave(filename = "adaptive_bot_wcd.png",
 
 # ANALYSIS: Win percentage ====
 
-bot_win_pct = get_bot_win_pct(data)
+bot_win_pct = get_bot_win_pct(bot_data)
 condition_win_pct = get_condition_win_pct(bot_win_pct)
 
 # How did bot win percentage values compare to chance?
@@ -491,14 +369,14 @@ get_ig_summary = function(data) {
 # TODO move this to separate function or place at start
 
 # Add previous move column
-data = data %>%
+bot_data = bot_data %>%
   group_by(bot_strategy, game_id, player_id) %>%
   mutate(
     prev_move = lag(player_move, 1)) %>%
   ungroup()
 
 # Add opponent move column
-data = data %>%
+bot_data = bot_data %>%
   group_by(game_id, round_index) %>%
   mutate(
     opponent_move = ifelse(is.na(lag(player_move, 1)), lead(player_move, 1), lag(player_move, 1))
@@ -506,7 +384,7 @@ data = data %>%
   ungroup()
 
 # Add opponent previous move column
-data = data %>%
+bot_data = bot_data %>%
   group_by(bot_strategy, game_id, player_id) %>%
   mutate(
     opponent_prev_move = lag(opponent_move, 1)
@@ -515,12 +393,12 @@ data = data %>%
 
 
 # get overall probability of each transition (for each player)
-transition_summary = get_player_transition_dist(data)
+transition_summary = get_player_transition_dist(bot_data)
 # get information gain for opponent of each player based on each player's transition probabilities
 transition_ig = get_ig_transition(transition_summary)
 
 # get overall probability of each cournot transition (for each player)
-cournot_transition_summary = get_player_cournot_transition_dist(data)
+cournot_transition_summary = get_player_cournot_transition_dist(bot_data)
 # get information gain for opponent of each player based on each player's cournot transition probabilities
 cournot_transition_ig = get_ig_cournot_transition(cournot_transition_summary)
 

@@ -124,13 +124,13 @@ get_bot_prev_outcome_win_pct_summary = function(bot_loss_prev_outcome) {
 
 default_plot_theme = theme(
   # text
-  plot.title = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
-  axis.title.y = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
-  axis.title.x = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(t = 0.5, unit = "line")),
-  axis.text.y = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
-  axis.text.x = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
-  legend.title = element_text(face = "bold", size = 20, family = "Avenir", color = "black"),
-  legend.text = element_text(face = "bold", size = 14, family = "Avenir", color = "black"),
+  plot.title = element_text(size = 24, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
+  axis.title.y = element_text(size = 24, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
+  axis.title.x = element_text(size = 24, family = "Avenir", color = "black", margin = margin(t = 0.5, unit = "line")),
+  axis.text.y = element_text(size = 18, family = "Avenir", color = "black"),
+  axis.text.x = element_text(size = 18, family = "Avenir", color = "black"),
+  legend.title = element_text(size = 20, family = "Avenir", color = "black"),
+  legend.text = element_text(size = 14, family = "Avenir", color = "black"),
   # backgrounds, lines
   panel.background = element_blank(),
   strip.background = element_blank(),
@@ -168,7 +168,7 @@ plot_prev_move_win_pct = function(bot_loss_summary_prev_move, strategy, title, x
     default_plot_theme +
     theme(
       axis.ticks.x = element_blank(),
-      axis.text.x = element_text(face = "bold", size = 20, family = "Avenir", color = "black"),
+      axis.text.x = element_text(size = 20, family = "Avenir", color = "black"),
       legend.position = "none"
     )
 }
@@ -196,7 +196,7 @@ plot_outcome_win_pct = function(bot_loss_summary_prev_outcome, strategy, title, 
     default_plot_theme +
     theme(
       axis.ticks.x = element_blank(),
-      axis.text.x = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
+      axis.text.x = element_text(size = 18, family = "Avenir", color = "black"),
       legend.position = "none"
     )
 }
@@ -353,7 +353,7 @@ win_pct_bins = condition_block_win_pct %>%
   default_plot_theme +
   theme(
     # Make X axis text sideways
-    axis.text.x = element_text(face = "bold", size = 14, angle = 45, vjust = 0.5, family = "Avenir", color = "black"),
+    axis.text.x = element_text(size = 14, angle = 45, vjust = 0.5, family = "Avenir", color = "black"),
     # Add legend formatting
     legend.position = "right",
     legend.key = element_rect(colour = "transparent", fill = "transparent"),
@@ -364,13 +364,17 @@ win_pct_bins
 
 
 # > Combined figure ====
-win_pct_overall + win_pct_bins +
+win_pct_combined = win_pct_overall + win_pct_bins +
   plot_layout(widths = c(1.5, 2.5))
+win_pct_combined
 
 ggsave(
-  filename = "stable_bot_win_pct.png",
+  win_pct_combined,
+  filename = "stable_bot_win_pct.pdf",
+  device = cairo_pdf,
   path = IMG_PATH,
-  width = 10, height = 6.5,
+  width = 10,
+  height = 6.5,
   dpi = 300
 )
 
@@ -529,21 +533,23 @@ win_positive_lose_negative_plot_outcome = plot_outcome_win_pct(bot_loss_summary_
 
 
 # Plot using patchwork
-prev_move_positive_plot + prev_move_negative_plot +
+stable_bot_win_pct_conditional = prev_move_positive_plot + prev_move_negative_plot +
   opponent_prev_move_positive_plot + opponent_prev_move_nil_plot +
   win_nil_lose_positive_plot_outcome + win_positive_lose_negative_plot_outcome +
   plot_layout(ncol = 2) +
   plot_annotation(tag_levels = 'A') &
   theme(plot.tag = element_text(size = 24, family = "Avenir"))
-
+stable_bot_win_pct_conditional
 
 ggsave(
-  filename = "stable_bot_win_pct_conditional.png",
+  stable_bot_win_pct_conditional,
+  filename = "stable_bot_win_pct_conditional.pdf",
+  device = cairo_pdf,
   path = IMG_PATH,
-  width = 11.5, height = 13,
+  width = 11.5,
+  height = 13,
   dpi = 300
 )
-
 
 
 # APPENDIX: self-transitions against outcome-transition opponents ====
@@ -780,19 +786,20 @@ t2 = plot_individual_learning_curves(subject_block_win_pct, condition_block_win_
 t3 = plot_individual_learning_curves(subject_block_win_pct, condition_block_win_pct, strats[3])
 t4 = plot_individual_learning_curves(subject_block_win_pct, condition_block_win_pct, strats[4])
 
-t1 + t2 + t3 + t4 +
+individual_curves = t1 + t2 + t3 + t4 +
   plot_layout(
     ncol = 2,
     heights = unit(c(10, 10), c('cm', 'cm'))
   )
+individual_curves
 
 ggsave(
-  filename = "individual_curves.png",
+  individual_curves,
+  filename = "individual_curves.pdf",
+  device = cairo_pdf,
   path = IMG_PATH,
-  width = 13, height = 10.5,
+  width = 13,
+  height = 10.5,
   dpi = 300
 )
-
-
-
 

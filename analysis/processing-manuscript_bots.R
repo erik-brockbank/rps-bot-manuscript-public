@@ -11,6 +11,7 @@ library(tidyverse)
 
 # GLOBALS ====
 DATA_PATH = "../data" # pathway to data file
+DATA_PATH = "../.."
 DATA_FILE = "rps_v2_data.csv" # name of file containing full dataset for all rounds
 GAME_ROUNDS = 300
 STRATEGY_LEVELS = c("prev_move_positive", "prev_move_negative",

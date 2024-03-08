@@ -1,9 +1,7 @@
-#
-# This script contains the final analysis of supplemental post-experiment survey data
-# for the rps bot journal submission
-#
 
-# TODO migrate this to RMarkdown for nice display of tables, figures?
+#
+# This script contains the final analysis of supplemental post-experiment survey data for the rps bot journal submission
+#
 
 
 
@@ -141,14 +139,19 @@ default_plot_theme = theme(
 # Experiment 1 ====
 load(paste(DATA_PATH, TRIAL_DATA_E1, sep = "/"))
 
+e1_metadata = bot_data %>%
+  filter(is_bot == 0) %>%
+  select(player_id, bot_strategy) %>%
+  unique()
+
+
 # > Free response data ====
 # "In the text box below, please describe any strategies you used to try and beat your opponent."
 fr_resp_e1 = read_csv(paste(DATA_PATH, FR_FILE_E1, sep = "/"))
 
 # Keep only participants whose data we analyzed in results
 fr_resp_e1 = fr_resp_e1 %>%
-  inner_join(bot_data,
-             by = c("game_id", "player_id"))
+  inner_join(e1_metadata, by = c("player_id"))
 
 # Print responses
 fr_resp_e1 %>%
@@ -164,8 +167,7 @@ fr_resp_e1 %>%
 slider_resp_e1 = read_csv(paste(DATA_PATH, SLIDER_FILE_E1, sep = "/"))
 # Keep only participants whose data we analyzed in results
 slider_resp_e1 = slider_resp_e1 %>%
-  inner_join(trial_summary_e1,
-             by = c("game_id", "player_id"))
+  inner_join(e1_metadata, by = c("player_id"))
 # Add human readable condition names
 slider_resp_e1 = slider_resp_e1 %>%
   rowwise() %>%
@@ -201,8 +203,8 @@ p1 = plot_survey_summary_e1(
   paste("\n", str_wrap(unique((slider_resp_e1 %>% filter(index == q_index))$statement)[1], str_limit)),
   "Response",
   default_plot_theme,
-  legend_theme
-  # no_legend
+  # legend_theme
+  no_legend
 )
 p1
 ggsave(

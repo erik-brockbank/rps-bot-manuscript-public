@@ -89,13 +89,13 @@ get_condition_win_pct = function(individual_win_pct) {
 
 default_plot_theme = theme(
   # text
-  plot.title = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
-  axis.title.y = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
-  axis.title.x = element_text(face = "bold", size = 24, family = "Avenir", color = "black", margin = margin(t = 0.5, unit = "line")),
-  axis.text.y = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
-  axis.text.x = element_text(face = "bold", size = 14, family = "Avenir", color = "black"),
-  legend.title = element_text(face = "bold", size = 20, family = "Avenir", color = "black"),
-  legend.text = element_text(face = "bold", size = 18, family = "Avenir", color = "black"),
+  plot.title = element_text(size = 24, family = "Avenir", color = "black", margin = margin(b = 0.5, unit = "line")),
+  axis.title.y = element_text(size = 24, family = "Avenir", color = "black", margin = margin(r = 0.5, unit = "line")),
+  axis.title.x = element_text(size = 24, family = "Avenir", color = "black", margin = margin(t = 0.5, unit = "line")),
+  axis.text.y = element_text(size = 18, family = "Avenir", color = "black"),
+  axis.text.x = element_text(size = 14, family = "Avenir", color = "black"),
+  legend.title = element_text(size = 20, family = "Avenir", color = "black"),
+  legend.text = element_text(size = 18, family = "Avenir", color = "black"),
   # backgrounds, lines
   panel.background = element_blank(),
   strip.background = element_blank(),
@@ -185,7 +185,7 @@ wcd_summary = get_bot_strategy_win_count_differential_summary(wcd_all)
 
 # FIGURE: Win count differentials ====
 
-wcd_summary %>%
+adaptive_bot_wcd = wcd_summary %>%
   ggplot(aes(x = bot_strategy, y = mean_win_count_diff, color = bot_strategy)) +
   geom_point(size = 6) +
   geom_errorbar(
@@ -215,12 +215,16 @@ wcd_summary %>%
     legend.spacing.y = unit(0, "lines"),
     legend.key.size = unit(3, "lines")
   )
+adaptive_bot_wcd
 
-
-ggsave(filename = "adaptive_bot_wcd.png",
-       path = IMG_PATH,
-       width = 10,
-       height = 6
+ggsave(
+  adaptive_bot_wcd,
+  filename = "adaptive_bot_wcd.pdf",
+  device = cairo_pdf,
+  path = IMG_PATH,
+  width = 10,
+  height = 6,
+  dpi = 300
 )
 
 
@@ -238,49 +242,6 @@ for (bot_strat in unique(bot_win_pct$bot_strategy)) {
            mu = (1/3))
   )
 }
-
-
-
-# FIGURE: Win percentages ====
-
-condition_win_pct %>%
-  ggplot(aes(x = bot_strategy, y = mean_win_pct, color = bot_strategy)) +
-  geom_point(size = 6) +
-  geom_errorbar(
-    aes(ymin = mean_win_pct - se_win_pct, ymax = mean_win_pct + se_win_pct),
-    width = 0, linewidth = 1) +
-  geom_hline(yintercept = 1/3, linewidth = 1, linetype = "dashed", color = "black") +
-  scale_x_discrete(
-    name = element_blank(),
-    labels = element_blank()
-  ) +
-  scale_y_continuous(
-    name = "Bot win percentage",
-    breaks = seq(0.25, 0.5, by = 0.05),
-    labels = as.character(seq(0.25, 0.5, by = 0.05)),
-    limits = c(0.28, 0.45)
-  ) +
-  scale_color_viridis(
-    discrete = T,
-    name = "Human pattern",
-    labels = STRATEGY_LABELS
-  ) +
-  default_plot_theme +
-  theme(
-    axis.ticks.x = element_blank(),
-    legend.position = "right",
-    legend.key = element_rect(colour = "transparent", fill = "transparent"),
-    legend.spacing.y = unit(0, "lines"),
-    legend.key.size = unit(3, "lines")
-  )
-
-
-# ggsave(filename = "adaptive_bot_win_pct.png",
-#        path = IMG_PATH,
-#        width = 10,
-#        height = 6
-# )
-
 
 
 
@@ -498,10 +459,10 @@ p1 = transition_ig_summary %>%
   scale_color_viridis(discrete = T) +
   default_plot_theme +
   theme(
-    plot.title = element_text(size = 20, face = "bold"),
-    axis.title.y = element_text(size = 18, face = "bold"),
-    axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.y = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 20),
+    axis.title.y = element_text(size = 18),
+    axis.text.x = element_text(size = 12, angle = 0, vjust = 1),
+    axis.text.y = element_text(size = 14),
     legend.position = "none"
   )
 
@@ -525,10 +486,10 @@ p2 = cournot_transition_ig_summary %>%
   scale_color_viridis(discrete = T) +
   default_plot_theme +
   theme(
-    plot.title = element_text(size = 20, face = "bold"),
-    axis.title.y = element_text(size = 18, face = "bold"),
-    axis.text.x = element_text(size = 12, face = "bold", angle = 0, vjust = 1),
-    axis.text.y = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 20),
+    axis.title.y = element_text(size = 18),
+    axis.text.x = element_text(size = 12, angle = 0, vjust = 1),
+    axis.text.y = element_text(size = 14),
     legend.position = "none"
   )
 
@@ -536,12 +497,15 @@ p2 = cournot_transition_ig_summary %>%
 p3 = p1 / p2
 p3
 
-ggsave(filename = "adaptive_bot_information_gain.png",
-       path = IMG_PATH,
-       width = 9,
-       height = 12,
+ggsave(
+  p3,
+  filename = "adaptive_bot_information_gain.pdf",
+  device = cairo_pdf,
+  path = IMG_PATH,
+  width = 9,
+  height = 12,
+  dpi = 300
 )
-
 
 
 # ANALYSIS: Simulate self-transition biases against opponent-transition bots ====

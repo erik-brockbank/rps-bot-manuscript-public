@@ -4,7 +4,7 @@
 
 
 # SETUP ====
-setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
+# setwd("/Users/erikbrockbank/dev/research/vullab/rps-bot-manuscript-public/analysis")
 library(tidyverse)
 
 # Globals

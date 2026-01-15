@@ -1,8 +1,9 @@
 # Repeated rock, paper, scissors play reveals limits in adaptive sequential behavior
 
+**Erik Brockbank & Edward Vul. *Cognitive Psychology* (2024). \[[LINK](https://www.erikbrockbank.com/static/docs/papers/cog%20psych%20-%20repeated%20rock%20paper%20scissors%20play.pdf) to paper\]**
+
 ![thumbnail](figures/thumbnail.png)
 
-Erik Brockbank & Edward Vul. *Cognitive Psychology* (2024). \[[LINK](https://www.erikbrockbank.com/static/docs/papers/cog%20psych%20-%20repeated%20rock%20paper%20scissors%20play.pdf) to paper\]
 
 
 ```
